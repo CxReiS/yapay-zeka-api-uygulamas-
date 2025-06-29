@@ -245,12 +245,7 @@ class MainApplication(QMainWindow):
         self.sidebar = QFrame()
         self.sidebar.setFixedWidth(250)
         # Layout düzeni
-        sidebar_layout = QVBoxLayout()
-        sidebar_layout.addWidget(self.search_box)
-        sidebar_layout.addWidget(self.new_chat_btn)
-        sidebar_layout.addWidget(self.chat_list, 1)  # Esnek alan
-        sidebar_layout.addWidget(self.new_project_btn)
-        sidebar_layout.addWidget(self.projects_tree, 1)  # Esnek alan
+        sidebar_layout = QVBoxLayout(self.sidebar)
         
         # Arama Kutusu
         self.search_box = QLineEdit()
@@ -290,10 +285,12 @@ class MainApplication(QMainWindow):
         self.projects_tree.itemClicked.connect(self.load_project_chat)
         self.projects_tree.itemDoubleClicked.connect(self.edit_project_title)
         sidebar_layout.addWidget(self.projects_tree)
-        
+
         # Model seçimi
         model_box = QGroupBox("🤖 Model Seçimi")
         model_layout = QVBoxLayout(model_box)
+        self.model_combo = QComboBox()
+        self.model_combo.addItems(["deepseek-chat", "deepseek-coder", "deepseek-math"])
         model_layout.addWidget(self.model_combo)
         sidebar_layout.addWidget(model_box)
         
