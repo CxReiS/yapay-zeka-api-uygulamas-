@@ -46,8 +46,8 @@ def generate_all_icons():
         "new_chat": ("💬", "#4CD964"),
         "new_folder": ("📁", "#FF9500"),
         "login": ("🔑", "#5856D6"),
-        "attach_file": ("📤", "#007AFF"),  # Yeni dosya ekle ikonu
-        "send_message": ("✉️", "#34C759"),  # Yeni gönder ikonu
+        "attach_file": ("📤", "#007AFF"),
+        "send_message": ("✉️", "#34C759"),
         "brain": ("🧠", "#AF52DE"),
         "search": ("🔍", "#5AC8FA"),
         "delete": ("🗑", "#FF3B30"),

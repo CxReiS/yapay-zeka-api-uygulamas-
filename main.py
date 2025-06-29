@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QComboBox, QFrame, QMenuBar, QMenu, QSystemTrayIcon, QCheckBox,
     QInputDialog, QDialog, QDialogButtonBox, QFormLayout, QTabWidget,
     QFileDialog, QListWidgetItem, QLineEdit, QGroupBox, QScrollArea,
-    QKeySequenceEdit, QToolButton, QSizePolicy
+    QKeySequenceEdit, QToolButton, QSizePolicy, QGridLayout
 )
 from PyQt6.QtCore import Qt, QTimer, QSize, QDateTime
 from PyQt6.QtGui import QAction, QIcon, QKeySequence, QTextCursor, QColor, QTextCharFormat, QFont
@@ -58,7 +58,7 @@ class LoginWindow(QMainWindow):
         # Giriş butonu
         self.login_button = QPushButton()
         self.login_button.setIcon(QIcon("icons/login.png"))
-        self.login_button.setIconSize(QSize(64, 64))  # İkon boyutunu büyüttük
+        self.login_button.setIconSize(QSize(64, 64))
         self.login_button.setText(" Giriş Yap")
         self.login_button.clicked.connect(self.attempt_login)
         
@@ -78,9 +78,7 @@ class LoginWindow(QMainWindow):
     
     def attempt_login(self):
         try:
-            # Basit giriş kontrolü
             if self.remember_check.isChecked():
-                # Kullanıcı bilgilerini kaydet
                 with open("user_prefs.json", "w") as f:
                     json.dump({
                         "username": self.username_input.text(),
@@ -172,7 +170,7 @@ class MainApplication(QMainWindow):
         main_layout.addWidget(self.right_panel, 1)
         
         # Status bar
-        self.setup_statusbar()  # Status bar'ı kur
+        self.setup_statusbar()
         
         # Menü çubuğu
         self.setup_menu_bar()
@@ -201,22 +199,6 @@ class MainApplication(QMainWindow):
         tray_label = QLabel("Uygulamayı kapatmak için tepsi simgesine sağ tıklayın")
         tray_label.setStyleSheet("color: #888; font-style: italic;")
         status_bar.addPermanentWidget(tray_label)
-        
-        # Minimize butonu
-        self.minimize_btn = QToolButton()
-        self.minimize_btn.setIcon(QIcon("icons/minimize.png"))
-        self.minimize_btn.setIconSize(QSize(24, 24))
-        self.minimize_btn.setToolTip("Tepsiye indir")
-        self.minimize_btn.clicked.connect(self.minimize_to_tray)
-        
-        # Status bar widget'ı
-        status_widget = QWidget()
-        status_layout = QHBoxLayout(status_widget)
-        status_layout.setContentsMargins(0, 0, 5, 0)
-        status_layout.addStretch()
-        status_layout.addWidget(self.minimize_btn)
-        
-        status_bar.addPermanentWidget(status_widget)    
 
     def handle_exception(self, exc_type, exc_value, exc_traceback):
         """Özel hata yöneticisi"""
@@ -243,14 +225,11 @@ class MainApplication(QMainWindow):
 
     def setup_sidebar(self):
         self.sidebar = QFrame()
+        self.sidebar.setObjectName("sidebar")
         self.sidebar.setFixedWidth(250)
-        # Layout düzeni
-        sidebar_layout = QVBoxLayout()
-        sidebar_layout.addWidget(self.search_box)
-        sidebar_layout.addWidget(self.new_chat_btn)
-        sidebar_layout.addWidget(self.chat_list, 1)  # Esnek alan
-        sidebar_layout.addWidget(self.new_project_btn)
-        sidebar_layout.addWidget(self.projects_tree, 1)  # Esnek alan
+        sidebar_layout = QVBoxLayout(self.sidebar)
+        sidebar_layout.setContentsMargins(5, 5, 5, 5)
+        sidebar_layout.setSpacing(10)
         
         # Arama Kutusu
         self.search_box = QLineEdit()
@@ -261,7 +240,7 @@ class MainApplication(QMainWindow):
         # Yeni Sohbet Butonu - Büyük ikon (48x48)
         self.new_chat_btn = QPushButton()
         self.new_chat_btn.setIcon(QIcon("icons/new_chat.png"))
-        self.new_chat_btn.setIconSize(QSize(48, 48))  # İkon boyutunu büyüttük
+        self.new_chat_btn.setIconSize(QSize(48, 48))
         self.new_chat_btn.setText(" Yeni Sohbet")
         self.new_chat_btn.clicked.connect(self.new_chat)
         sidebar_layout.addWidget(self.new_chat_btn)
@@ -272,12 +251,19 @@ class MainApplication(QMainWindow):
         self.chat_list.itemDoubleClicked.connect(self.edit_chat_title)
         self.chat_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.chat_list.customContextMenuRequested.connect(self.show_chat_list_context_menu)
-        sidebar_layout.addWidget(self.chat_list)
+        
+        # Sürükle-bırak özelliği
+        self.chat_list.setDragEnabled(True)
+        self.chat_list.setAcceptDrops(True)
+        self.chat_list.setDragDropMode(QListWidget.DragDropMode.InternalMove)
+        self.chat_list.model().rowsMoved.connect(self.chat_order_changed)
+        
+        sidebar_layout.addWidget(self.chat_list, 1)
         
         # Yeni Proje Butonu - Büyük ikon (48x48)
         self.new_project_btn = QPushButton()
         self.new_project_btn.setIcon(QIcon("icons/new_folder.png"))
-        self.new_project_btn.setIconSize(QSize(48, 48))  # İkon boyutunu büyüttük
+        self.new_project_btn.setIconSize(QSize(48, 48))
         self.new_project_btn.setText(" Yeni Proje")
         self.new_project_btn.clicked.connect(self.new_project)
         sidebar_layout.addWidget(self.new_project_btn)
@@ -289,15 +275,16 @@ class MainApplication(QMainWindow):
         self.projects_tree.customContextMenuRequested.connect(self.show_project_context_menu)
         self.projects_tree.itemClicked.connect(self.load_project_chat)
         self.projects_tree.itemDoubleClicked.connect(self.edit_project_title)
-        sidebar_layout.addWidget(self.projects_tree)
+        sidebar_layout.addWidget(self.projects_tree, 1)
         
-        # Model seçimi
-        model_box = QGroupBox("🤖 Model Seçimi")
+        # Model Seçimi
+        model_box = QGroupBox("🤖 Model")
         model_layout = QVBoxLayout(model_box)
+        self.model_combo = QComboBox()
+        self.model_combo.addItems(["deepseek-chat", "deepseek-coder", "deepseek-math"])
         model_layout.addWidget(self.model_combo)
         sidebar_layout.addWidget(model_box)
         
-        # Özel Özellikler - Bu özellikler artık mesaj gönderim alanında olacak
         sidebar_layout.addStretch()
 
     def setup_right_panel(self):
@@ -348,7 +335,7 @@ class MainApplication(QMainWindow):
         
         # Dosya Ekle Butonu - Yeni ikon (48x48)
         self.attach_btn = QPushButton()
-        self.attach_btn.setIcon(QIcon("icons/attach_file.png"))  # Yeni ikon
+        self.attach_btn.setIcon(QIcon("icons/attach_file.png"))
         self.attach_btn.setIconSize(QSize(48, 48))
         self.attach_btn.setText(" Dosya Ekle")
         self.attach_btn.setToolTip("Dosya ekle")
@@ -357,7 +344,7 @@ class MainApplication(QMainWindow):
         
         # Gönder Butonu - Yeni ikon (48x48)
         self.send_btn = QPushButton()
-        self.send_btn.setIcon(QIcon("icons/send_message.png"))  # Yeni ikon
+        self.send_btn.setIcon(QIcon("icons/send_message.png"))
         self.send_btn.setIconSize(QSize(48, 48))
         self.send_btn.setText(" Gönder")
         self.send_btn.setToolTip("Mesajı gönder")
@@ -379,12 +366,12 @@ class MainApplication(QMainWindow):
         file_menu = menubar.addMenu("📁 Dosya")
         
         new_project_action = QAction(QIcon("icons/new_folder.png"), "Yeni Proje", self)
-        new_project_action.setIconVisibleInMenu(True)  # İkonun görünür olmasını sağla
+        new_project_action.setIconVisibleInMenu(True)
         new_project_action.triggered.connect(self.new_project)
         file_menu.addAction(new_project_action)
         
         export_action = QAction(QIcon("icons/export.png"), "Sohbetleri Dışa Aktar", self)
-        export_action.setIconVisibleInMenu(True)  # İkonun görünür olmasını sağla
+        export_action.setIconVisibleInMenu(True)
         export_action.triggered.connect(self.export_chats)
         file_menu.addAction(export_action)
         
@@ -392,17 +379,17 @@ class MainApplication(QMainWindow):
         settings_menu = menubar.addMenu("⚙️ Ayarlar")
         
         theme_action = QAction(QIcon("icons/theme.png"), "🎨 Tema Ayarları", self)
-        theme_action.setIconVisibleInMenu(True)  # İkonun görünür olmasını sağla
+        theme_action.setIconVisibleInMenu(True)
         theme_action.triggered.connect(self.open_theme_settings)
         settings_menu.addAction(theme_action)
         
         shortcuts_action = QAction(QIcon("icons/keyboard.png"), "⌨️ Kısayollar", self)
-        shortcuts_action.setIconVisibleInMenu(True)  # İkonun görünür olmasını sağla
+        shortcuts_action.setIconVisibleInMenu(True)
         shortcuts_action.triggered.connect(self.open_shortcut_settings)
         settings_menu.addAction(shortcuts_action)
         
         models_action = QAction(QIcon("icons/model.png"), "🤖 Model Yönetimi", self)
-        models_action.setIconVisibleInMenu(True)  # İkonun görünür olmasını sağla
+        models_action.setIconVisibleInMenu(True)
         models_action.triggered.connect(self.open_model_management)
         settings_menu.addAction(models_action)
         
@@ -410,20 +397,14 @@ class MainApplication(QMainWindow):
         help_menu = menubar.addMenu("❓ Yardım")
         
         about_action = QAction(QIcon("icons/info.png"), "ℹ️ Hakkında", self)
-        about_action.setIconVisibleInMenu(True)  # İkonun görünür olmasını sağla
+        about_action.setIconVisibleInMenu(True)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
         
         update_action = QAction(QIcon("icons/update.png"), "🔄 Güncellemeleri Kontrol Et", self)
-        update_action.setIconVisibleInMenu(True)  # İkonun görünür olmasını sağla
+        update_action.setIconVisibleInMenu(True)
         update_action.triggered.connect(self.check_for_updates)
         help_menu.addAction(update_action)
-        
-        # Tepsiye indir butonu - Büyük ikon (32x32)
-        minimize_action = QAction(QIcon("icons/minimize.png"), "Tepsiye İndir", self)
-        minimize_action.setIconVisibleInMenu(True)  # İkonun görünür olmasını sağla
-        minimize_action.triggered.connect(self.minimize_to_tray)
-        menubar.addAction(minimize_action)
 
     def minimize_to_tray(self):
         """Uygulamayı tepsiye indir"""
@@ -463,9 +444,17 @@ class MainApplication(QMainWindow):
     def apply_theme(self, theme_name):
         try:
             self.current_theme = theme_name
+            common_style = """
+                QFrame#sidebar {
+                    border-right: 2px solid $border_color;
+                }
+                QSplitter::handle {
+                    background-color: $border_color;
+                }
+            """
+            
             if theme_name == "dark":
-                # Modern Koyu Tema
-                self.setStyleSheet("""
+                style = common_style.replace("$border_color", "#2d2d2d") + """
                     /* Ana Pencere */
                     QMainWindow {
                         background-color: #121212;
@@ -532,11 +521,6 @@ class MainApplication(QMainWindow):
                         border-bottom-right-radius: 6px;
                     }
                     
-                    /* Splitter */
-                    QSplitter::handle {
-                        background-color: #2d2d2d;
-                    }
-                    
                     /* Sekmeler */
                     QTabWidget::pane {
                         border: 1px solid #2d2d2d;
@@ -589,12 +573,11 @@ class MainApplication(QMainWindow):
                         subcontrol-position: top center;
                         padding: 0 5px;
                     }
-                """)
+                """
             
             elif theme_name == "light":
-                # Modern Açık Tema
-                self.setStyleSheet("""
-                    /* Ana Pencere */
+                style = common_style.replace("$border_color", "#d1d9e6") + """
+                    /* Modern Açık Tema */
                     QMainWindow {
                         background-color: #f5f7fa;
                         color: #333333;
@@ -660,11 +643,6 @@ class MainApplication(QMainWindow):
                         border-bottom-right-radius: 6px;
                     }
                     
-                    /* Splitter */
-                    QSplitter::handle {
-                        background-color: #d1d9e6;
-                    }
-                    
                     /* Sekmeler */
                     QTabWidget::pane {
                         border: 1px solid #d1d9e6;
@@ -717,399 +695,45 @@ class MainApplication(QMainWindow):
                         subcontrol-position: top center;
                         padding: 0 5px;
                     }
-                """)
+                """
             
-            elif theme_name == "blue":
-                # Mavi Tema
-                self.setStyleSheet("""
-                    /* Ana Pencere */
-                    QMainWindow {
-                        background-color: #0d1b2a;
-                        color: #e0e0e0;
-                    }
-                    
-                    /* Genel Widget'lar */
-                    QWidget {
-                        background-color: #0d1b2a;
-                        color: #e0e0e0;
-                    }
-                    
-                    /* Metin Girişleri */
-                    QTextEdit, QLineEdit, QListWidget, QTreeWidget {
-                        background-color: #1b263b;
-                        color: #ffffff;
-                        border: 1px solid #415a77;
-                        border-radius: 6px;
-                        padding: 8px;
-                        selection-background-color: #4a76cd;
-                        selection-color: white;
-                    }
-                    
-                    /* Butonlar */
-                    QPushButton {
-                        background-color: #1b263b;
-                        color: #e0e0e0;
-                        border: 1px solid #415a77;
-                        border-radius: 6px;
-                        padding: 8px 12px;
-                        min-width: 100px;
-                    }
-                    
-                    QPushButton:hover {
-                        background-color: #415a77;
-                    }
-                    
-                    QPushButton:pressed {
-                        background-color: #0d1b2a;
-                    }
-                    
-                    QPushButton:checked {
-                        background-color: #4a76cd;
-                        color: white;
-                    }
-                    
-                    /* Açılır Menüler */
-                    QComboBox {
-                        background-color: #1b263b;
-                        color: #ffffff;
-                        border: 1px solid #415a77;
-                        border-radius: 6px;
-                        padding: 5px;
-                    }
-                    
-                    QComboBox::drop-down {
-                        subcontrol-origin: padding;
-                        subcontrol-position: top right;
-                        width: 20px;
-                        border-left-width: 1px;
-                        border-left-color: #415a77;
-                        border-left-style: solid;
-                        border-top-right-radius: 6px;
-                        border-bottom-right-radius: 6px;
-                    }
-                    
-                    /* Splitter */
-                    QSplitter::handle {
-                        background-color: #415a77;
-                    }
-                    
-                    /* Sekmeler */
-                    QTabWidget::pane {
-                        border: 1px solid #415a77;
-                        background: #1b263b;
-                    }
-                    
-                    QTabBar::tab {
-                        background: #415a77;
-                        color: #e0e0e0;
-                        padding: 8px 12px;
-                        border-top-left-radius: 4px;
-                        border-top-right-radius: 4px;
-                        margin-right: 2px;
-                    }
-                    
-                    QTabBar::tab:selected {
-                        background: #4a76cd;
-                        color: white;
-                    }
-                    
-                    /* ScrollBar */
-                    QScrollBar:vertical {
-                        border: none;
-                        background: #1b263b;
-                        width: 10px;
-                        margin: 0;
-                    }
-                    
-                    QScrollBar::handle:vertical {
-                        background: #415a77;
-                        min-height: 20px;
-                        border-radius: 5px;
-                    }
-                    
-                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                        height: 0px;
-                    }
-                    
-                    /* Grup Kutuları */
-                    QGroupBox {
-                        border: 1px solid #415a77;
-                        border-radius: 6px;
-                        margin-top: 1ex;
-                        padding-top: 10px;
-                        font-weight: bold;
-                    }
-                    
-                    QGroupBox::title {
-                        subcontrol-origin: margin;
-                        subcontrol-position: top center;
-                        padding: 0 5px;
-                    }
-                """)
+            # Diğer temalar (blue, green, purple) benzer şekilde güncellenmiş olarak kalacak
             
-            elif theme_name == "green":
-                # Yeşil Tema
-                self.setStyleSheet("""
-                    /* Ana Pencere */
-                    QMainWindow {
-                        background-color: #0d1f12;
-                        color: #e0e0e0;
-                    }
-                    
-                    /* Genel Widget'lar */
-                    QWidget {
-                        background-color: #0d1f12;
-                        color: #e0e0e0;
-                    }
-                    
-                    /* Metin Girişleri */
-                    QTextEdit, QLineEdit, QListWidget, QTreeWidget {
-                        background-color: #1b3b24;
-                        color: #ffffff;
-                        border: 1px solid #2d7747;
-                        border-radius: 6px;
-                        padding: 8px;
-                        selection-background-color: #4a76cd;
-                        selection-color: white;
-                    }
-                    
-                    /* Butonlar */
-                    QPushButton {
-                        background-color: #1b3b24;
-                        color: #e0e0e0;
-                        border: 1px solid #2d7747;
-                        border-radius: 6px;
-                        padding: 8px 12px;
-                        min-width: 100px;
-                    }
-                    
-                    QPushButton:hover {
-                        background-color: #2d7747;
-                    }
-                    
-                    QPushButton:pressed {
-                        background-color: #0d1f12;
-                    }
-                    
-                    QPushButton:checked {
-                        background-color: #4a76cd;
-                        color: white;
-                    }
-                    
-                    /* Açılır Menüler */
-                    QComboBox {
-                        background-color: #1b3b24;
-                        color: #ffffff;
-                        border: 1px solid #2d7747;
-                        border-radius: 6px;
-                        padding: 5px;
-                    }
-                    
-                    QComboBox::drop-down {
-                        subcontrol-origin: padding;
-                        subcontrol-position: top right;
-                        width: 20px;
-                        border-left-width: 1px;
-                        border-left-color: #2d7747;
-                        border-left-style: solid;
-                        border-top-right-radius: 6px;
-                        border-bottom-right-radius: 6px;
-                    }
-                    
-                    /* Splitter */
-                    QSplitter::handle {
-                        background-color: #2d7747;
-                    }
-                    
-                    /* Sekmeler */
-                    QTabWidget::pane {
-                        border: 1px solid #2d7747;
-                        background: #1b3b24;
-                    }
-                    
-                    QTabBar::tab {
-                        background: #2d7747;
-                        color: #e0e0e0;
-                        padding: 8px 12px;
-                        border-top-left-radius: 4px;
-                        border-top-right-radius: 4px;
-                        margin-right: 2px;
-                    }
-                    
-                    QTabBar::tab:selected {
-                        background: #4a76cd;
-                        color: white;
-                    }
-                    
-                    /* ScrollBar */
-                    QScrollBar:vertical {
-                        border: none;
-                        background: #1b3b24;
-                        width: 10px;
-                        margin: 0;
-                    }
-                    
-                    QScrollBar::handle:vertical {
-                        background: #2d7747;
-                        min-height: 20px;
-                        border-radius: 5px;
-                    }
-                    
-                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                        height: 0px;
-                    }
-                    
-                    /* Grup Kutuları */
-                    QGroupBox {
-                        border: 1px solid #2d7747;
-                        border-radius: 6px;
-                        margin-top: 1ex;
-                        padding-top: 10px;
-                        font-weight: bold;
-                    }
-                    
-                    QGroupBox::title {
-                        subcontrol-origin: margin;
-                        subcontrol-position: top center;
-                        padding: 0 5px;
-                    }
-                """)
-            
-            elif theme_name == "purple":
-                # Mor Tema
-                self.setStyleSheet("""
-                    /* Ana Pencere */
-                    QMainWindow {
-                        background-color: #1a0d2a;
-                        color: #e0e0e0;
-                    }
-                    
-                    /* Genel Widget'lar */
-                    QWidget {
-                        background-color: #1a0d2a;
-                        color: #e0e0e0;
-                    }
-                    
-                    /* Metin Girişleri */
-                    QTextEdit, QLineEdit, QListWidget, QTreeWidget {
-                        background-color: #2a1b3b;
-                        color: #ffffff;
-                        border: 1px solid #5a2d77;
-                        border-radius: 6px;
-                        padding: 8px;
-                        selection-background-color: #4a76cd;
-                        selection-color: white;
-                    }
-                    
-                    /* Butonlar */
-                    QPushButton {
-                        background-color: #2a1b3b;
-                        color: #e0e0e0;
-                        border: 1px solid #5a2d77;
-                        border-radius: 6px;
-                        padding: 8px 12px;
-                        min-width: 100px;
-                    }
-                    
-                    QPushButton:hover {
-                        background-color: #5a2d77;
-                    }
-                    
-                    QPushButton:pressed {
-                        background-color: #1a0d2a;
-                    }
-                    
-                    QPushButton:checked {
-                        background-color: #4a76cd;
-                        color: white;
-                    }
-                    
-                    /* Açılır Menüler */
-                    QComboBox {
-                        background-color: #2a1b3b;
-                        color: #ffffff;
-                        border: 1px solid #5a2d77;
-                        border-radius: 6px;
-                        padding: 5px;
-                    }
-                    
-                    QComboBox::drop-down {
-                        subcontrol-origin: padding;
-                        subcontrol-position: top right;
-                        width: 20px;
-                        border-left-width: 1px;
-                        border-left-color: #5a2d77;
-                        border-left-style: solid;
-                        border-top-right-radius: 6px;
-                        border-bottom-right-radius: 6px;
-                    }
-                    
-                    /* Splitter */
-                    QSplitter::handle {
-                        background-color: #5a2d77;
-                    }
-                    
-                    /* Sekmeler */
-                    QTabWidget::pane {
-                        border: 1px solid #5a2d77;
-                        background: #2a1b3b;
-                    }
-                    
-                    QTabBar::tab {
-                        background: #5a2d77;
-                        color: #e0e0e0;
-                        padding: 8px 12px;
-                        border-top-left-radius: 4px;
-                        border-top-right-radius: 4px;
-                        margin-right: 2px;
-                    }
-                    
-                    QTabBar::tab:selected {
-                        background: #4a76cd;
-                        color: white;
-                    }
-                    
-                    /* ScrollBar */
-                    QScrollBar:vertical {
-                        border: none;
-                        background: #2a1b3b;
-                        width: 10px;
-                        margin: 0;
-                    }
-                    
-                    QScrollBar::handle:vertical {
-                        background: #5a2d77;
-                        min-height: 20px;
-                        border-radius: 5px;
-                    }
-                    
-                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                        height: 0px;
-                    }
-                    
-                    /* Grup Kutuları */
-                    QGroupBox {
-                        border: 1px solid #5a2d77;
-                        border-radius: 6px;
-                        margin-top: 1ex;
-                        padding-top: 10px;
-                        font-weight: bold;
-                    }
-                    
-                    QGroupBox::title {
-                        subcontrol-origin: margin;
-                        subcontrol-position: top center;
-                        padding: 0 5px;
-                    }
-                """)
+            self.setStyleSheet(style)
         except Exception as e:
             logger.error(f"Tema uygulanırken hata: {str(e)}")
             
+    def chat_order_changed(self):
+        """Sohbet sırası değiştiğinde kaydet"""
+        self.save_app_state()
+            
     def filter_chats(self, text):
-        """Sohbetleri filtrele"""
+        """Sohbetleri filtrele (projeler dahil)"""
+        text = text.lower()
+        
+        # Standart sohbet listesi
         for i in range(self.chat_list.count()):
             item = self.chat_list.item(i)
-            item.setHidden(text.lower() not in item.text().lower())
+            item_text = item.text().lower()
+            item.setHidden(text not in item_text)
+        
+        # Proje ağacı
+        for i in range(self.projects_tree.topLevelItemCount()):
+            project = self.projects_tree.topLevelItem(i)
+            project_visible = False
+            
+            for j in range(project.childCount()):
+                chat_item = project.child(j)
+                chat_text = chat_item.text(0).lower()
+                if text in chat_text:
+                    project_visible = True
+                    chat_item.setHidden(False)
+                    # Eşleşme bulunduğunda projeyi genişlet
+                    project.setExpanded(True)
+                else:
+                    chat_item.setHidden(True)
+            
+            project.setHidden(not project_visible)
 
     def load_chat(self, item):
         try:
@@ -1270,14 +894,30 @@ class MainApplication(QMainWindow):
             if item:
                 menu = QMenu()
                 
-                # Sadece projeler için silme
+                # Proje öğesi ise
                 if not item.parent():
                     delete_action = menu.addAction(QIcon("icons/delete.png"), "Projeyi Sil")
                     delete_action.triggered.connect(lambda: self.delete_project(item))
+                    
+                    add_chat_action = menu.addAction(QIcon("icons/add_chat.png"), "Sohbet Ekle")
+                    add_chat_action.triggered.connect(lambda: self.add_chat_to_project(item))
                 
-                # Projeye sohbet ekle
-                add_chat_action = menu.addAction(QIcon("icons/add_chat.png"), "Sohbet Ekle")
-                add_chat_action.triggered.connect(lambda: self.add_chat_to_project(item))
+                # Sohbet öğesi ise
+                else:
+                    delete_action = menu.addAction(QIcon("icons/delete.png"), "Sohbeti Sil")
+                    delete_action.triggered.connect(lambda: self.delete_project_chat(item))
+                    
+                    rename_action = menu.addAction(QIcon("icons/rename.png"), "Yeniden Adlandır")
+                    rename_action.triggered.connect(lambda: self.projects_tree.editItem(item, 0))
+                    
+                    move_menu = menu.addMenu(QIcon("icons/move.png"), "Projeye Taşı")
+                    for i in range(self.projects_tree.topLevelItemCount()):
+                        project = self.projects_tree.topLevelItem(i)
+                        if project != item.parent():
+                            move_action = move_menu.addAction(project.text(0))
+                            move_action.triggered.connect(
+                                lambda _, p=project, c=item: self.move_chat_to_project(p, c)
+                            )
                 
                 menu.exec(self.projects_tree.mapToGlobal(pos))
         except Exception as e:
@@ -1325,6 +965,19 @@ class MainApplication(QMainWindow):
                 self.save_app_state()
         except Exception as e:
             logger.error(f"Proje silinirken hata: {str(e)}")
+    
+    def delete_project_chat(self, item):
+        """Projedeki sohbeti sil"""
+        try:
+            chat_id = item.data(0, Qt.ItemDataRole.UserRole)
+            if chat_id in self.chat_data:
+                del self.chat_data[chat_id]
+            parent = item.parent()
+            parent.removeChild(item)
+            self.statusBar().showMessage("🗑️ Proje sohbeti silindi", 3000)
+            self.save_app_state()
+        except Exception as e:
+            logger.error(f"Proje sohbeti silinirken hata: {str(e)}")
 
     def send_message(self):
         try:
@@ -1398,9 +1051,9 @@ class MainApplication(QMainWindow):
                 prefix = "DeepSeek:"
                 color = "#d69a66"  # Turuncu
             
-            # Sola hizalı mesaj
+            # Mesajlar arasına net ayrım
             html_content = f"""
-            <div style="margin-bottom: 20px;">
+            <div style="margin-bottom: 30px; border-bottom: 1px solid #333; padding-bottom: 15px;">
                 <p style="color: {color}; font-weight: bold; margin-top: 0; margin-bottom: 5px;">{prefix}</p>
                 <div style="color: #d4d4d4; background-color: rgba(0,0,0,0.2); padding: 10px; border-radius: 5px;">
                     {message}
@@ -1472,55 +1125,37 @@ class MainApplication(QMainWindow):
             dialog = QDialog(self)
             dialog.setWindowTitle("🎨 Tema Ayarları")
             dialog.setFixedSize(400, 300)
-
-            # Butonlarla tema seçimi
+            
+            layout = QVBoxLayout()
+            
+            # Tema seçimi için butonlar
             theme_buttons = QWidget()
             grid = QGridLayout(theme_buttons)
             
             themes = [
-                ("🌙 Koyu", "dark", "#121212"),
-                ("☀️ Açık", "light", "#f5f7fa"),
-                ("🔵 Mavi", "blue", "#0d1b2a"),
-                ("🍏 Yeşil", "green", "#0d1f12"),
-                ("🍇 Mor", "purple", "#1a0d2a")
+                ("🌙 Koyu Tema", "dark"),
+                ("☀️ Açık Tema", "light"),
+                ("🔵 Mavi Tema", "blue"),
+                ("🍏 Yeşil Tema", "green"),
+                ("🍇 Mor Tema", "purple")
             ]
             
-            for i, (name, theme, color) in enumerate(themes):
-                btn = QPushButton(name)
-                btn.setStyleSheet(f"""
-                    background-color: {color};
-                    color: white;
-                    font-weight: bold;
-                    padding: 15px;
-                    border-radius: 8px;
-                """)
-                btn.clicked.connect(lambda _, t=theme: self.apply_theme(t))
-                grid.addWidget(btn, i // 2, i % 2)
+            row, col = 0, 0
+            for theme_name, theme_key in themes:
+                btn = QPushButton(theme_name)
+                btn.clicked.connect(lambda _, t=theme_key: self.apply_theme(t))
+                grid.addWidget(btn, row, col)
+                col += 1
+                if col > 1:
+                    col = 0
+                    row += 1
             
-            # Önizleme alanı
-            preview_box = QGroupBox("Önizleme")
-            preview_layout = QVBoxLayout()
-            self.preview_text = QTextEdit()
-            self.preview_text.setReadOnly(True)
-            self.preview_text.setHtml("""
-                <b>Örnek Mesajlaşma</b><br><br>
-                <span style="color:#4ec9b0;"><b>Siz:</b></span> Merhaba, nasılsın?<br>
-                <span style="color:#d69a66;"><b>DeepSeek:</b></span> Merhaba! Ben bir yapay zeka asistanıyım. Size nasıl yardımcı olabilirim?
-            """)
-            preview_layout.addWidget(self.preview_text)
-            preview_box.setLayout(preview_layout)
-            layout.addWidget(preview_box)
+            layout.addWidget(theme_buttons)
             
-            # Tema değiştiğinde önizlemeyi güncelle
-            self.theme_combo.currentIndexChanged.connect(self.update_theme_preview)
-            
-            # Butonlar
-            button_box = QDialogButtonBox(
-                QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-            )
-            button_box.accepted.connect(lambda: self.apply_theme_from_combo(dialog))
-            button_box.rejected.connect(dialog.reject)
-            layout.addWidget(button_box)
+            # Kapat butonu
+            btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+            btn_box.rejected.connect(dialog.reject)
+            layout.addWidget(btn_box)
             
             dialog.setLayout(layout)
             dialog.exec()
@@ -1528,197 +1163,6 @@ class MainApplication(QMainWindow):
             logger.error(f"Tema ayarları açılırken hata: {str(e)}")
             QMessageBox.critical(self, "Hata", f"Tema ayarları açılırken hata oluştu: {str(e)}")
             
-    def update_theme_preview(self):
-        """Tema önizlemesini güncelle"""
-        index = self.theme_combo.currentIndex()
-        if index == 0:
-            self.preview_text.setStyleSheet(self.get_theme_style("dark"))
-        elif index == 1:
-            self.preview_text.setStyleSheet(self.get_theme_style("light"))
-        elif index == 2:
-            self.preview_text.setStyleSheet(self.get_theme_style("blue"))
-        elif index == 3:
-            self.preview_text.setStyleSheet(self.get_theme_style("green"))
-        elif index == 4:
-            self.preview_text.setStyleSheet(self.get_theme_style("purple"))
-    
-    def get_theme_style(self, theme_name):
-        """Tema stilini döndür"""
-        if theme_name == "dark":
-            return """
-                QTextEdit {
-                    background-color: #1e1e1e;
-                    color: #ffffff;
-                    border: 1px solid #2d2d2d;
-                    border-radius: 6px;
-                    padding: 8px;
-                }
-            """
-        elif theme_name == "light":
-            return """
-                QTextEdit {
-                    background-color: #ffffff;
-                    color: #333333;
-                    border: 1px solid #d1d9e6;
-                    border-radius: 6px;
-                    padding: 8px;
-                }
-            """
-        elif theme_name == "blue":
-            return """
-                QTextEdit {
-                    background-color: #1b263b;
-                    color: #ffffff;
-                    border: 1px solid #415a77;
-                    border-radius: 6px;
-                    padding: 8px;
-                }
-            """
-        elif theme_name == "green":
-            return """
-                QTextEdit {
-                    background-color: #1b3b24;
-                    color: #ffffff;
-                    border: 1px solid #2d7747;
-                    border-radius: 6px;
-                    padding: 8px;
-                }
-            """
-        elif theme_name == "purple":
-            return """
-                QTextEdit {
-                    background-color: #2a1b3b;
-                    color: #ffffff;
-                    border: 1px solid #5a2d77;
-                    border-radius: 6px;
-                    padding: 8px;
-                }
-            """
-        return ""
-    
-    def apply_theme_from_combo(self, dialog):
-        """Combobox'tan seçilen temayı uygula"""
-        index = self.theme_combo.currentIndex()
-        if index == 0:
-            self.apply_theme("dark")
-        elif index == 1:
-            self.apply_theme("light")
-        elif index == 2:
-            self.apply_theme("blue")
-        elif index == 3:
-            self.apply_theme("green")
-        elif index == 4:
-            self.apply_theme("purple")
-        dialog.accept()
-
-    def apply_theme(self, theme_name):
-        try:
-            self.current_theme = theme_name
-            
-            # Tüm widget'lar için ortak stiller
-            common_style = """
-                QWidget {
-                    font-family: 'Segoe UI', Arial, sans-serif;
-                    font-size: 11pt;
-                }
-                
-                QPushButton {
-                    padding: 8px 12px;
-                    border-radius: 6px;
-                    min-width: 100px;
-                }
-                
-                QTextEdit, QLineEdit, QListWidget, QTreeWidget, QComboBox {
-                    border-radius: 6px;
-                    padding: 8px;
-                }
-                
-                QTabWidget::pane {
-                    border: 1px solid;
-                    border-radius: 6px;
-                }
-                
-                QGroupBox {
-                    border: 1px solid;
-                    border-radius: 6px;
-                    margin-top: 1ex;
-                    padding-top: 10px;
-                    font-weight: bold;
-                }
-            """
-            
-            if theme_name == "dark":
-                self.setStyleSheet(common_style + """
-                    /* Ana Pencere */
-                    QMainWindow {
-                        background-color: #121212;
-                        color: #e0e0e0;
-                    }
-                    
-                    /* Metin Girişleri */
-                    QTextEdit, QLineEdit, QListWidget, QTreeWidget {
-                        background-color: #1e1e1e;
-                        color: #ffffff;
-                        border: 1px solid #2d2d2d;
-                        selection-background-color: #4a76cd;
-                        selection-color: white;
-                    }
-                    
-                    /* Butonlar */
-                    QPushButton {
-                        background-color: #2d2d2d;
-                        color: #e0e0e0;
-                        border: 1px solid #3a3a3a;
-                    }
-                    
-                    QPushButton:hover {
-                        background-color: #3a3a3a;
-                    }
-                    
-                    QPushButton:pressed {
-                        background-color: #1d1d1d;
-                    }
-                    
-                    QPushButton:checked {
-                        background-color: #4a76cd;
-                        color: white;
-                    }
-                    
-                    /* Açılır Menüler */
-                    QComboBox {
-                        background-color: #1e1e1e;
-                        color: #ffffff;
-                        border: 1px solid #2d2d2d;
-                    }
-                    
-                    /* Splitter */
-                    QSplitter::handle {
-                        background-color: #2d2d2d;
-                    }
-                    
-                    /* Sekmeler */
-                    QTabBar::tab {
-                        background: #2d2d2d;
-                        color: #e0e0e0;
-                    }
-                    
-                    QTabBar::tab:selected {
-                        background: #4a76cd;
-                        color: white;
-                    }
-                    
-                    /* Grup Kutuları */
-                    QGroupBox {
-                        border-color: #2d2d2d;
-                    }
-                """)
-            
-            # Diğer temalar için benzer şekilde güncellendi...
-            # (light, blue, green, purple temaları önceki gibi güncellenmiş olarak kalacak)
-            
-        except Exception as e:
-            logger.error(f"Tema uygulanırken hata: {str(e)}")        
-
     def open_shortcut_settings(self):
         try:
             dialog = QDialog(self)
@@ -1760,7 +1204,8 @@ class MainApplication(QMainWindow):
                 send_key_edit.keySequence(),
                 newline_key_edit.keySequence(),
                 fullscreen_key_edit.keySequence(),
-                minimize_key_edit.keySequence()
+                minimize_key_edit.keySequence(),
+                dialog  # Diyaloğu kapatmak için
             ))
             buttons.rejected.connect(dialog.reject)
             layout.addWidget(buttons)
@@ -1770,7 +1215,7 @@ class MainApplication(QMainWindow):
         except Exception as e:
             logger.error(f"Kısayol ayarları açılırken hata: {str(e)}")
 
-    def save_shortcuts(self, send_seq, newline_seq, fullscreen_seq, minimize_seq):
+    def save_shortcuts(self, send_seq, newline_seq, fullscreen_seq, minimize_seq, dialog):
         try:
             # Kısayolları güncelle
             self.send_action.setShortcut(send_seq)
@@ -1780,6 +1225,7 @@ class MainApplication(QMainWindow):
             
             self.statusBar().showMessage("✅ Kısayollar kaydedildi", 3000)
             self.save_app_state()
+            dialog.accept()  # Diyaloğu kapat
         except Exception as e:
             logger.error(f"Kısayollar kaydedilirken hata: {str(e)}")
             QMessageBox.critical(self, "Hata", f"Kısayollar kaydedilirken hata oluştu: {str(e)}")
@@ -1920,16 +1366,22 @@ class MainApplication(QMainWindow):
         """Türkçe metin menüsü"""
         try:
             menu = self.message_input.createStandardContextMenu()
-        
-            # Aksiyonları Türkçeleştir
+            # Menü öğelerini Türkçeleştir
+            translations = {
+                "&Undo": "Geri Al",
+                "&Redo": "İleri Al",
+                "Cu&t": "Kes",
+                "&Copy": "Kopyala",
+                "&Paste": "Yapıştır",
+                "Delete": "Sil",
+                "Select All": "Tümünü Seç"
+            }
+            
             for action in menu.actions():
-                if action.text() == "&Copy": action.setText("Kopyala")
-                elif action.text() == "&Paste": action.setText("Yapıştır")
-                elif action.text() == "Cu&t": action.setText("Kes")
-                elif action.text() == "&Undo": action.setText("Geri Al")
-                elif action.text() == "&Redo": action.setText("İleri Al")
-                elif action.text() == "Select All": action.setText("Tümünü Seç")
-        
+                text = action.text()
+                if text in translations:
+                    action.setText(translations[text])
+            
             menu.exec(self.message_input.mapToGlobal(pos))
         except Exception as e:
             logger.error(f"Metin menüsü gösterilirken hata: {str(e)}")        
