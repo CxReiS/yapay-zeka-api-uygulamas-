@@ -3,17 +3,24 @@ import os
 import json
 import logging
 import uuid
+import requests
+import time
+import re
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QMessageBox, QTextEdit, 
+    QLabel, QLineEdit, QPushButton, QMessageBox, QTextEdit,
     QListWidget, QSplitter, QStatusBar, QTreeWidget, QTreeWidgetItem,
     QComboBox, QFrame, QMenuBar, QMenu, QSystemTrayIcon, QCheckBox,
     QInputDialog, QDialog, QDialogButtonBox, QFormLayout, QTabWidget,
     QFileDialog, QListWidgetItem, QLineEdit, QGroupBox, QScrollArea,
-    QKeySequenceEdit, QToolButton, QSizePolicy, QGridLayout
+    QKeySequenceEdit, QToolButton, QSizePolicy, QGridLayout, QFontComboBox,
+    QSlider
 )
-from PyQt6.QtCore import Qt, QTimer, QSize, QDateTime
-from PyQt6.QtGui import QAction, QIcon, QKeySequence, QTextCursor, QColor, QTextCharFormat, QFont
+from PyQt6.QtCore import Qt, QTimer, QSize, QDateTime, QEvent
+from PyQt6.QtGui import QAction, QIcon, QKeySequence, QTextCursor, QColor, QTextCharFormat, QFont, QPixmap
+from worker_thread import WorkerThread
+)
+from worker_thread import WorkerThread
 
 # Loglama sistemi
 logging.basicConfig(
@@ -148,8 +155,10 @@ class MainApplication(QMainWindow):
         # Hata yakalama
         sys.excepthook = self.handle_exception
         
-        # Sistem Tepsisine Ekle
-        self.tray_icon = QSystemTrayIcon(QIcon("icons/logo.png"), self)
+        # Sistem Tepsisine Ekle (büyük ikon)
+        pixmap = QPixmap("logo.png")
+        scaled = pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        self.tray_icon = QSystemTrayIcon(QIcon(scaled), self)
         self.setup_tray_icon()
         
         # Ana widget
@@ -174,18 +183,47 @@ class MainApplication(QMainWindow):
         
         # Menü çubuğu
         self.setup_menu_bar()
+
+        minimize_btn = QToolButton()
+        minimize_btn.setIcon(QIcon("icons/minimize.png"))
+        minimize_btn.clicked.connect(self.minimize_to_tray)
+        minimize_btn.setToolTip("Tepsiye indir")
+        title_widget = QWidget()
+        title_layout = QHBoxLayout(title_widget)
+        title_layout.addStretch()
+        title_layout.addWidget(minimize_btn)
+        self.menuBar().setCornerWidget(title_widget)
         
         # Kısayollar
         self.setup_shortcuts()
         
         # Tema
         self.apply_theme("dark")
-        
+
+        self.api_key = None
+        self.api_base_url = "https://openrouter.ai/api/v1"
+        self.load_api_key()
+
+        self.model_mapping = {
+            "deepseek-chat": "deepseek/deepseek-r1:free",
+            "deepseek-coder": "deepseek/deepseek-r1:free",
+            "deepseek-math": "deepseek/deepseek-r1:free"
+        }
+
+        # Yazı tipi ayarları
+        self.font_family = "Arial"
+        self.font_size = 16
+        self.label_bold = True
+        self.italic_subtitles = False
+
         # Ekli dosyalar
         self.attached_files = []
+
+        self.project_context = {}
         
         # Uygulama durumunu yükle
         self.load_app_state()
+        self.apply_font_settings()
         
         # Aktif sohbet ID'si
         self.active_chat_id = None
@@ -195,10 +233,6 @@ class MainApplication(QMainWindow):
         status_bar = self.statusBar()
         status_bar.showMessage("✅ Bağlantı kuruldu")
         
-        # Tepsi açıklaması
-        tray_label = QLabel("Uygulamayı kapatmak için tepsi simgesine sağ tıklayın")
-        tray_label.setStyleSheet("color: #888; font-style: italic;")
-        status_bar.addPermanentWidget(tray_label)
 
     def handle_exception(self, exc_type, exc_value, exc_traceback):
         """Özel hata yöneticisi"""
@@ -210,16 +244,24 @@ class MainApplication(QMainWindow):
         error_dialog.exec()
 
     def setup_tray_icon(self):
+        pixmap = QPixmap("icons/logo.png").scaled(
+            64,
+            64,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.tray_icon = QSystemTrayIcon(QIcon(pixmap), self)
+
         tray_menu = QMenu()
         show_action = tray_menu.addAction("Göster")
         show_action.triggered.connect(self.show_and_activate)
-        
+
         check_update_action = tray_menu.addAction("Güncellemeleri Kontrol Et")
         check_update_action.triggered.connect(self.check_for_updates)
-        
+
         quit_action = tray_menu.addAction("Çıkış")
-        quit_action.triggered.connect(self.quit_application) 
-        
+        quit_action.triggered.connect(self.quit_application)
+
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.show()
 
@@ -275,6 +317,11 @@ class MainApplication(QMainWindow):
         self.projects_tree.customContextMenuRequested.connect(self.show_project_context_menu)
         self.projects_tree.itemClicked.connect(self.load_project_chat)
         self.projects_tree.itemDoubleClicked.connect(self.edit_project_title)
+        self.projects_tree.setAcceptDrops(True)
+        self.projects_tree.viewport().setAcceptDrops(True)
+        self.projects_tree.dragEnterEvent = self.project_drag_enter
+        self.projects_tree.dropEvent = self.project_drop_event
+        self.projects_tree.currentItemChanged.connect(self.load_project_context)
         sidebar_layout.addWidget(self.projects_tree, 1)
         
         # Model Seçimi
@@ -282,21 +329,51 @@ class MainApplication(QMainWindow):
         model_layout = QVBoxLayout(model_box)
         self.model_combo = QComboBox()
         self.model_combo.addItems(["deepseek-chat", "deepseek-coder", "deepseek-math"])
+        self.model_combo.currentIndexChanged.connect(self.model_changed)
         model_layout.addWidget(self.model_combo)
         sidebar_layout.addWidget(model_box)
-        
+
         sidebar_layout.addStretch()
 
     def setup_right_panel(self):
         self.right_panel = QSplitter(Qt.Orientation.Vertical)
-        
+
+        # Sekmeli alan
+        self.context_tabs = QTabWidget()
+
         # Mesaj Görüntüleme
+        chat_tab = QWidget()
+        chat_layout = QVBoxLayout(chat_tab)
         self.chat_display = QTextEdit()
         self.chat_display.setReadOnly(True)
-        self.chat_display.setHtml("<center><i>Hoş geldiniz! Lütfen bir sohbet seçin.</i></center>")
+        self.chat_display.setHtml("<center><i>Merhaba, size nasıl yardımcı olabilirim?</i></center>")
         self.chat_display.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.chat_display.customContextMenuRequested.connect(self.show_chat_context_menu)
-        
+        chat_layout.addWidget(self.chat_display)
+        self.context_tabs.addTab(chat_tab, "💬 Sohbet")
+
+        # Proje Bağlamı Sekmesi
+        project_tab = QWidget()
+        project_layout = QVBoxLayout(project_tab)
+        self.project_instructions = QTextEdit()
+        self.project_instructions.setPlaceholderText("Proje talimatları...")
+        project_layout.addWidget(QLabel("📝 Talimatlar:"))
+        project_layout.addWidget(self.project_instructions)
+        self.project_files_list = QListWidget()
+        project_layout.addWidget(QLabel("📁 Dosyalar:"))
+        project_layout.addWidget(self.project_files_list)
+        file_btn_layout = QHBoxLayout()
+        self.add_project_file_btn = QPushButton("Dosya Ekle")
+        self.add_project_file_btn.clicked.connect(self.add_project_file)
+        self.remove_project_file_btn = QPushButton("Dosya Sil")
+        self.remove_project_file_btn.clicked.connect(self.remove_project_file)
+        file_btn_layout.addWidget(self.add_project_file_btn)
+        file_btn_layout.addWidget(self.remove_project_file_btn)
+        project_layout.addLayout(file_btn_layout)
+        self.context_tabs.addTab(project_tab, "📂 Proje Bağlamı")
+
+        self.right_panel.addWidget(self.context_tabs)
+
         # Mesaj Gönderme Paneli
         send_panel = QWidget()
         send_layout = QVBoxLayout(send_panel)
@@ -307,6 +384,11 @@ class MainApplication(QMainWindow):
         self.message_input.setMinimumHeight(100)
         self.message_input.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.message_input.customContextMenuRequested.connect(self.show_text_context_menu)
+        self.message_input.installEventFilter(self)
+        self.message_input.setAcceptDrops(True)
+
+        self.attachments_list = QListWidget()
+        send_layout.insertWidget(0, self.attachments_list)
         
         # Butonlar için alt panel
         bottom_layout = QHBoxLayout()
@@ -354,8 +436,7 @@ class MainApplication(QMainWindow):
         
         send_layout.addWidget(self.message_input)
         send_layout.addLayout(bottom_layout)
-        
-        self.right_panel.addWidget(self.chat_display)
+
         self.right_panel.addWidget(send_panel)
         self.right_panel.setSizes([600, 200])
 
@@ -387,6 +468,11 @@ class MainApplication(QMainWindow):
         shortcuts_action.setIconVisibleInMenu(True)
         shortcuts_action.triggered.connect(self.open_shortcut_settings)
         settings_menu.addAction(shortcuts_action)
+
+        font_action = QAction(QIcon("icons/settings.png"), "🖋️ Yazı Tipi", self)
+        font_action.setIconVisibleInMenu(True)
+        font_action.triggered.connect(self.open_font_settings)
+        settings_menu.addAction(font_action)
         
         models_action = QAction(QIcon("icons/model.png"), "🤖 Model Yönetimi", self)
         models_action.setIconVisibleInMenu(True)
@@ -440,6 +526,17 @@ class MainApplication(QMainWindow):
         self.minimize_action.setShortcut(QKeySequence("Ctrl+M"))
         self.minimize_action.triggered.connect(self.minimize_to_tray)
         self.addAction(self.minimize_action)
+
+        # Mesaj girişine event filter
+        self.message_input.installEventFilter(self)
+
+    def eventFilter(self, source, event):
+        if source is self.message_input and event.type() == QEvent.Type.KeyPress:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                if not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
+                    self.send_message()
+                    return True
+        return super().eventFilter(source, event)
 
     def apply_theme(self, theme_name):
         try:
@@ -515,10 +612,20 @@ class MainApplication(QMainWindow):
                         subcontrol-position: top right;
                         width: 20px;
                         border-left-width: 1px;
-                        border-left-color: #2d2d2d;
+                        border-left-color: #d1d9e6;
                         border-left-style: solid;
                         border-top-right-radius: 6px;
                         border-bottom-right-radius: 6px;
+                    }
+                    QComboBox::down-arrow {
+                        image: url(down_arrow.png);
+                        width: 12px;
+                        height: 12px;
+                    }
+                    QComboBox::down-arrow {
+                        image: url(down_arrow.png);
+                        width: 12px;
+                        height: 12px;
                     }
                     
                     /* Sekmeler */
@@ -642,6 +749,12 @@ class MainApplication(QMainWindow):
                         border-top-right-radius: 6px;
                         border-bottom-right-radius: 6px;
                     }
+
+                    QComboBox::down-arrow {
+                        image: url(icons/down_arrow.png);
+                        width: 12px;
+                        height: 12px;
+                    }
                     
                     /* Sekmeler */
                     QTabWidget::pane {
@@ -696,12 +809,193 @@ class MainApplication(QMainWindow):
                         padding: 0 5px;
                     }
                 """
-            
-            # Diğer temalar (blue, green, purple) benzer şekilde güncellenmiş olarak kalacak
-            
+
+            elif theme_name == "blue":
+                style = common_style.replace("$border_color", "#275a8e") + """
+                    QMainWindow { background-color: #1b2e4a; color: #ffffff; }
+                    QWidget { background-color: #1b2e4a; color: #ffffff; }
+                    QTextEdit, QLineEdit, QListWidget, QTreeWidget {
+                        background-color: #223b5f;
+                        color: #ffffff;
+                        border: 1px solid #275a8e;
+                        border-radius: 6px;
+                        padding: 8px;
+                        selection-background-color: #4a90e2;
+                        selection-color: white;
+                    }
+                    QPushButton {
+                        background-color: #275a8e;
+                        color: #ffffff;
+                        border: 1px solid #2f6ca1;
+                        border-radius: 6px;
+                        padding: 8px 12px;
+                        min-width: 100px;
+                    }
+                    QPushButton:hover { background-color: #2f6ca1; }
+                    QPushButton:pressed { background-color: #1d4a7a; }
+                    QPushButton:checked { background-color: #4a90e2; color: white; }
+                    QComboBox {
+                        background-color: #223b5f;
+                        color: #ffffff;
+                        border: 1px solid #275a8e;
+                        border-radius: 6px;
+                        padding: 5px;
+                    }
+                    QComboBox::drop-down {
+                        subcontrol-origin: padding;
+                        subcontrol-position: top right;
+                        width: 20px;
+                        border-left-width: 1px;
+                        border-left-color: #275a8e;
+                        border-left-style: solid;
+                        border-top-right-radius: 6px;
+                        border-bottom-right-radius: 6px;
+                    }
+                    QComboBox::down-arrow {
+                        image: url(icons/down_arrow.png);
+                        width: 12px;
+                        height: 12px;
+                    }
+                    QTabWidget::pane { border: 1px solid #275a8e; background: #223b5f; }
+                    QTabBar::tab { background: #275a8e; color: #ffffff; padding: 8px 12px; border-top-left-radius: 4px; border-top-right-radius: 4px; margin-right: 2px; }
+                    QTabBar::tab:selected { background: #4a90e2; color: white; }
+                    QScrollBar:vertical { border: none; background: #223b5f; width: 10px; margin: 0; }
+                    QScrollBar::handle:vertical { background: #2f6ca1; min-height: 20px; border-radius: 5px; }
+                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+                    QGroupBox { border: 1px solid #275a8e; border-radius: 6px; margin-top: 1ex; padding-top: 10px; font-weight: bold; }
+                    QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top center; padding: 0 5px; }
+                """
+
+            elif theme_name == "green":
+                style = common_style.replace("$border_color", "#2e8b57") + """
+                    QMainWindow { background-color: #1f3d2b; color: #ffffff; }
+                    QWidget { background-color: #1f3d2b; color: #ffffff; }
+                    QTextEdit, QLineEdit, QListWidget, QTreeWidget {
+                        background-color: #28543c;
+                        color: #ffffff;
+                        border: 1px solid #2e8b57;
+                        border-radius: 6px;
+                        padding: 8px;
+                        selection-background-color: #44c77f;
+                        selection-color: white;
+                    }
+                    QPushButton {
+                        background-color: #2e8b57;
+                        color: #ffffff;
+                        border: 1px solid #379b63;
+                        border-radius: 6px;
+                        padding: 8px 12px;
+                        min-width: 100px;
+                    }
+                    QPushButton:hover { background-color: #379b63; }
+                    QPushButton:pressed { background-color: #1f5d3a; }
+                    QPushButton:checked { background-color: #44c77f; color: white; }
+                    QComboBox {
+                        background-color: #28543c;
+                        color: #ffffff;
+                        border: 1px solid #2e8b57;
+                        border-radius: 6px;
+                        padding: 5px;
+                    }
+                    QComboBox::drop-down {
+                        subcontrol-origin: padding;
+                        subcontrol-position: top right;
+                        width: 20px;
+                        border-left-width: 1px;
+                        border-left-color: #2e8b57;
+                        border-left-style: solid;
+                        border-top-right-radius: 6px;
+                        border-bottom-right-radius: 6px;
+                    }
+                    QComboBox::down-arrow {
+                        image: url(icons/down_arrow.png);
+                        width: 12px;
+                        height: 12px;
+                    }
+                    QTabWidget::pane { border: 1px solid #2e8b57; background: #28543c; }
+                    QTabBar::tab { background: #2e8b57; color: #ffffff; padding: 8px 12px; border-top-left-radius: 4px; border-top-right-radius: 4px; margin-right: 2px; }
+                    QTabBar::tab:selected { background: #44c77f; color: white; }
+                    QScrollBar:vertical { border: none; background: #28543c; width: 10px; margin: 0; }
+                    QScrollBar::handle:vertical { background: #379b63; min-height: 20px; border-radius: 5px; }
+                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+                    QGroupBox { border: 1px solid #2e8b57; border-radius: 6px; margin-top: 1ex; padding-top: 10px; font-weight: bold; }
+                    QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top center; padding: 0 5px; }
+                """
+
+            elif theme_name == "purple":
+                style = common_style.replace("$border_color", "#8a2be2") + """
+                    QMainWindow { background-color: #3d2a5b; color: #ffffff; }
+                    QWidget { background-color: #3d2a5b; color: #ffffff; }
+                    QTextEdit, QLineEdit, QListWidget, QTreeWidget {
+                        background-color: #4a346d;
+                        color: #ffffff;
+                        border: 1px solid #8a2be2;
+                        border-radius: 6px;
+                        padding: 8px;
+                        selection-background-color: #b366ff;
+                        selection-color: white;
+                    }
+                    QPushButton {
+                        background-color: #8a2be2;
+                        color: #ffffff;
+                        border: 1px solid #9b45e4;
+                        border-radius: 6px;
+                        padding: 8px 12px;
+                        min-width: 100px;
+                    }
+                    QPushButton:hover { background-color: #9b45e4; }
+                    QPushButton:pressed { background-color: #6c1fb8; }
+                    QPushButton:checked { background-color: #b366ff; color: white; }
+                    QComboBox {
+                        background-color: #4a346d;
+                        color: #ffffff;
+                        border: 1px solid #8a2be2;
+                        border-radius: 6px;
+                        padding: 5px;
+                    }
+                    QComboBox::drop-down {
+                        subcontrol-origin: padding;
+                        subcontrol-position: top right;
+                        width: 20px;
+                        border-left-width: 1px;
+                        border-left-color: #8a2be2;
+                        border-left-style: solid;
+                        border-top-right-radius: 6px;
+                        border-bottom-right-radius: 6px;
+                    }
+                    QComboBox::down-arrow {
+                        image: url(icons/down_arrow.png);
+                        width: 12px;
+                        height: 12px;
+                    }
+                    QTabWidget::pane { border: 1px solid #8a2be2; background: #4a346d; }
+                    QTabBar::tab { background: #8a2be2; color: #ffffff; padding: 8px 12px; border-top-left-radius: 4px; border-top-right-radius: 4px; margin-right: 2px; }
+                    QTabBar::tab:selected { background: #b366ff; color: white; }
+                    QScrollBar:vertical { border: none; background: #4a346d; width: 10px; margin: 0; }
+                    QScrollBar::handle:vertical { background: #9b45e4; min-height: 20px; border-radius: 5px; }
+                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+                    QGroupBox { border: 1px solid #8a2be2; border-radius: 6px; margin-top: 1ex; padding-top: 10px; font-weight: bold; }
+                    QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top center; padding: 0 5px; }
+                """
+
+            else:
+                style = ""
+
             self.setStyleSheet(style)
+
+            checked_style = "background-color: #4a76cd; color: white;"
+            self.deep_thought_btn.setStyleSheet(f"QPushButton:checked {{{checked_style}}}")
+            self.web_search_btn.setStyleSheet(f"QPushButton:checked {{{checked_style}}}")
         except Exception as e:
-            logger.error(f"Tema uygulanırken hata: {str(e)}")
+            logger.error(f"Tema uygulanirken hata: {str(e)}")
+
+    def apply_font_settings(self):
+        try:
+            font = QFont(self.font_family, self.font_size)
+            self.chat_display.setFont(font)
+            self.message_input.setFont(font)
+        except Exception as e:
+            logger.error(f"Yazı tipi uygulanirken hata: {str(e)}")
             
     def chat_order_changed(self):
         """Sohbet sırası değiştiğinde kaydet"""
@@ -825,7 +1119,7 @@ class MainApplication(QMainWindow):
             self.active_chat_id = chat_id
             
             # Sohbeti yükle
-            self.chat_display.setHtml("<center><i>Yeni sohbet başlatıldı</i></center>")
+            self.chat_display.setHtml("<center><i>Merhaba, size nasıl yardımcı olabilirim?</i></center>")
             self.statusBar().showMessage("🆕 Yeni sohbet başlatıldı", 3000)
             
             # Uygulama durumunu kaydet
@@ -843,6 +1137,30 @@ class MainApplication(QMainWindow):
         except Exception as e:
             logger.error(f"Sohbet başlığı düzenlenirken hata: {str(e)}")
 
+    def update_chat_title(self, chat_id, new_title):
+        """Sohbet başlığını tüm listelerde güncelle"""
+        for i in range(self.chat_list.count()):
+            item = self.chat_list.item(i)
+            if item.data(Qt.ItemDataRole.UserRole) == chat_id:
+                item.setText(new_title)
+                break
+
+        def update_tree(item):
+            if item.data(0, Qt.ItemDataRole.UserRole) == chat_id:
+                item.setText(0, f"💬 {new_title}")
+                return True
+            for j in range(item.childCount()):
+                if update_tree(item.child(j)):
+                    return True
+            return False
+
+        for i in range(self.projects_tree.topLevelItemCount()):
+            update_tree(self.projects_tree.topLevelItem(i))
+
+        if chat_id in self.chat_data:
+            self.chat_data[chat_id]["title"] = new_title
+        self.save_app_state()
+
     def new_project(self):
         try:
             project_name, ok = QInputDialog.getText(self, "Yeni Proje", "Proje Adı:")
@@ -851,18 +1169,7 @@ class MainApplication(QMainWindow):
                 new_project = QTreeWidgetItem([f"📂 {project_name}"])
                 new_project.setFlags(new_project.flags() | Qt.ItemFlag.ItemIsEditable)
                 
-                # Varsayılan sohbet ekle
-                default_chat = QTreeWidgetItem(["💬 Ana Sohbet"])
-                chat_id = str(uuid.uuid4())
-                default_chat.setData(0, Qt.ItemDataRole.UserRole, chat_id)
-                default_chat.setFlags(default_chat.flags() | Qt.ItemFlag.ItemIsEditable)
-                new_project.addChild(default_chat)
-                
-                # Yeni sohbet verisini oluştur
-                self.chat_data[chat_id] = {
-                    "title": "Ana Sohbet",
-                    "messages": []
-                }
+
                 
                 # Ağaca ekle
                 self.projects_tree.addTopLevelItem(new_project)
@@ -872,6 +1179,7 @@ class MainApplication(QMainWindow):
                 
                 # Projeyi seç
                 self.projects_tree.setCurrentItem(new_project)
+                self.chat_display.setHtml("<center><i>Merhaba, size nasıl yardımcı olabilirim?</i></center>")
                 
                 self.statusBar().showMessage(f"🆕 Yeni proje oluşturuldu: {project_name}", 3000)
                 self.save_app_state()
@@ -881,8 +1189,12 @@ class MainApplication(QMainWindow):
     def edit_project_title(self, item, column):
         """Proje başlığını düzenle"""
         try:
-            if not item.parent():  # Sadece üst seviye öğeler (projeler)
+            if item:
                 self.projects_tree.editItem(item, column)
+                if item.parent():
+                    chat_id = item.data(0, Qt.ItemDataRole.UserRole)
+                    if chat_id and chat_id in self.chat_data:
+                        self.chat_data[chat_id]["title"] = item.text(0).replace("💬 ", "")
                 self.save_app_state()
         except Exception as e:
             logger.error(f"Proje başlığı düzenlenirken hata: {str(e)}")
@@ -906,9 +1218,12 @@ class MainApplication(QMainWindow):
                 else:
                     delete_action = menu.addAction(QIcon("icons/delete.png"), "Sohbeti Sil")
                     delete_action.triggered.connect(lambda: self.delete_project_chat(item))
-                    
+
                     rename_action = menu.addAction(QIcon("icons/rename.png"), "Yeniden Adlandır")
                     rename_action.triggered.connect(lambda: self.projects_tree.editItem(item, 0))
+
+                    export_action = menu.addAction(QIcon("icons/export.png"), "Dışa Aktar")
+                    export_action.triggered.connect(self.export_selected_chat)
                     
                     move_menu = menu.addMenu(QIcon("icons/move.png"), "Projeye Taşı")
                     for i in range(self.projects_tree.topLevelItemCount()):
@@ -979,6 +1294,84 @@ class MainApplication(QMainWindow):
         except Exception as e:
             logger.error(f"Proje sohbeti silinirken hata: {str(e)}")
 
+    def load_api_key(self):
+        """Kayıtlı API anahtarını yükle"""
+        try:
+            if os.path.exists("api_config.json"):
+                with open("api_config.json", "r") as f:
+                    config = json.load(f)
+                    self.api_key = config.get("api_key")
+        except Exception as e:
+            logger.error(f"API anahtarı yüklenirken hata: {str(e)}")
+
+    def save_api_key(self, api_key):
+        """API anahtarını kaydet"""
+        try:
+            with open("api_config.json", "w") as f:
+                json.dump({"api_key": api_key}, f)
+            self.api_key = api_key
+            self.statusBar().showMessage("🔑 API anahtarı kaydedildi", 3000)
+        except Exception as e:
+            logger.error(f"API anahtarı kaydedilirken hata: {str(e)}")
+
+    def get_response_from_openrouter(self, model_name):
+        """OpenRouter API'sinden yanıt al"""
+        try:
+            url = f"{self.api_base_url}/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://github.com/CxReiS/DeepSeekChat",
+                "X-Title": "DeepSeek Chat"
+            }
+
+            # Sohbet geçmişini hazırla
+            messages = []
+            for msg in self.chat_data[self.active_chat_id]["messages"]:
+                role = "user" if msg["sender"] == "user" else "assistant"
+                messages.append({"role": role, "content": msg["message"]})
+
+            # OpenRouter model ID'sini al
+            openrouter_model = self.model_mapping.get(model_name, "deepseek/deepseek-r1:free")
+
+            data = {
+                "model": openrouter_model,
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 4096
+            }
+
+            response = requests.post(url, headers=headers, json=data, timeout=120)
+            response_data = response.json()
+
+            if response.status_code == 200:
+                assistant_reply = response_data["choices"][0]["message"]["content"]
+
+                # Yanıtı ekrana ve hafızaya ekle
+                self.append_message("assistant", assistant_reply)
+                self.chat_data[self.active_chat_id]["messages"].append({
+                    "sender": "assistant",
+                    "message": assistant_reply,
+                    "timestamp": QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate)
+                })
+
+                self.statusBar().showMessage(f"✅ Yanıt alındı ({model_name})", 3000)
+                self.save_app_state()
+            else:
+                error_msg = response_data.get("error", {}).get("message", "Bilinmeyen hata")
+                self.statusBar().showMessage(f"❌ Hata: {error_msg}", 5000)
+                logger.error(f"API hatası: {response.status_code} - {error_msg}")
+
+                # Hata durumunda simülasyon yap
+                QTimer.singleShot(1500, lambda: self.simulate_response(model_name))
+
+        except Exception as e:
+            logger.error(f"API isteği sırasında hata: {str(e)}")
+            self.statusBar().showMessage(f"❌ İstek hatası: {str(e)}", 5000)
+
+            # Hata durumunda simülasyon yap
+            QTimer.singleShot(1500, lambda: self.simulate_response(model_name))
+
     def send_message(self):
         try:
             message = self.message_input.toPlainText().strip()
@@ -1001,15 +1394,44 @@ class MainApplication(QMainWindow):
                 "message": message,
                 "timestamp": QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate)
             })
+
+            if len(self.chat_data[self.active_chat_id]["messages"]) == 1:
+                words = message.split()[:4]
+                new_title = " ".join(words)
+                if len(new_title) > 25:
+                    new_title = new_title[:22] + "..."
+                self.update_chat_title(self.active_chat_id, new_title)
             
             self.message_input.clear()
             
-            # Yanıtı simüle et
-            self.statusBar().showMessage("⏳ DeepSeek yanıt oluşturuyor...")
-            
-            # Aktif modeli göster
+            # Aktif modeli al
             model_name = self.model_combo.currentText()
-            QTimer.singleShot(1500, lambda: self.simulate_response(model_name))
+
+            # API iş parçacığı
+            self.worker = WorkerThread(
+                api_key="demo-key",
+                conversation_history=[{"role": msg['sender'], "content": msg['message']} for msg in self.chat_data[self.active_chat_id]["messages"]],
+                user_message=message,
+                model=model_name
+            )
+            self.worker.thinking_updated.connect(self.handle_thinking_update)
+            self.worker.response_received.connect(lambda reply, t: self.handle_api_response(reply, model_name))
+            self.worker.error_occurred.connect(lambda err: self.statusBar().showMessage(err, 5000))
+            self.worker.start()
+
+            self.statusBar().showMessage("⏳ DeepSeek yanıt oluşturuyor...")
+
+            if self.api_key:
+                history = []
+                for msg in self.chat_data[self.active_chat_id]["messages"]:
+                    role = "user" if msg["sender"] == "user" else "assistant"
+                    history.append({"role": role, "content": msg["message"]})
+                self.worker = WorkerThread(self.api_key, history, self.model_mapping.get(model_name, "deepseek/deepseek-r1:free"))
+                self.worker.response_received.connect(lambda reply, _: self.handle_api_response(reply, model_name))
+                self.worker.error_occurred.connect(lambda err: self.handle_api_error(err, model_name))
+                self.worker.start()
+            else:
+                QTimer.singleShot(1500, lambda: self.simulate_response(model_name))
             
             # Ekli dosyaları temizle
             self.attached_files = []
@@ -1018,6 +1440,24 @@ class MainApplication(QMainWindow):
             self.save_app_state()
         except Exception as e:
             logger.error(f"Mesaj gönderilirken hata: {str(e)}")
+
+    def handle_api_response(self, reply, model_name):
+        try:
+            self.append_message("assistant", reply)
+            self.chat_data[self.active_chat_id]["messages"].append({
+                "sender": "assistant",
+                "message": reply,
+                "timestamp": QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate),
+            })
+            self.statusBar().showMessage(f"✅ Yanıt alındı ({model_name})", 3000)
+            self.save_app_state()
+        except Exception as e:
+            logger.error(f"Yanıt işlenirken hata: {str(e)}")
+
+    def handle_api_error(self, error_msg, model_name):
+        logger.error(f"API hatası: {error_msg}")
+        self.statusBar().showMessage(f"❌ Hata: {error_msg}", 5000)
+        QTimer.singleShot(1500, lambda: self.simulate_response(model_name))
 
     def simulate_response(self, model_name):
         try:
@@ -1039,28 +1479,62 @@ class MainApplication(QMainWindow):
         except Exception as e:
             logger.error(f"Yanıt simüle edilirken hata: {str(e)}")
 
+    def handle_thinking_update(self, message):
+        cursor = self.chat_display.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        cursor.removeSelectedText()
+        dimmed_color = "#888888" if self.current_theme == "light" else "#aaaaaa"
+        html_content = f"<div style='color:{dimmed_color}; font-style:italic; margin-bottom:15px;'>{message}</div>"
+        self.chat_display.insertHtml(html_content)
+        self.chat_display.ensureCursorVisible()
+
+    def handle_api_response(self, reply, model_name):
+        self.chat_display.clear()
+        self.append_message("assistant", reply)
+        if self.active_chat_id:
+            self.chat_data[self.active_chat_id]["messages"].append({
+                "sender": "assistant",
+                "message": reply,
+                "timestamp": QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate),
+            })
+            self.save_app_state()
+
+    def model_changed(self, index):
+        model_name = self.model_combo.currentText()
+        self.statusBar().showMessage(f"🤖 Aktif model: {model_name}", 5000)
+        if "coder" in model_name:
+            self.message_input.setPlaceholderText("Kod problemini yazın...")
+        elif "math" in model_name:
+            self.message_input.setPlaceholderText("Matematik problemini yazın...")
+        else:
+            self.message_input.setPlaceholderText("DeepSeek'e mesaj yazın...")
+
     def append_message(self, sender, message):
         try:
             cursor = self.chat_display.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)
-            
+
             if sender == "user":
                 prefix = "Siz:"
-                color = "#4ec9b0"  # Mavi-yeşil
-            else:  # assistant
+                color = "#4ec9b0"
+                bg_color = "#1e1e1e" if self.current_theme == "dark" else "#f0f4f9"
+            else:
                 prefix = "DeepSeek:"
-                color = "#d69a66"  # Turuncu
-            
-            # Mesajlar arasına net ayrım
+                color = "#d69a66"
+                bg_color = "#2a2a2a" if self.current_theme == "dark" else "#ffffff"
+
+            weight = "bold" if self.label_bold else "normal"
+            style_italic = "italic" if self.italic_subtitles else "normal"
+
             html_content = f"""
-            <div style="margin-bottom: 30px; border-bottom: 1px solid #333; padding-bottom: 15px;">
-                <p style="color: {color}; font-weight: bold; margin-top: 0; margin-bottom: 5px;">{prefix}</p>
-                <div style="color: #d4d4d4; background-color: rgba(0,0,0,0.2); padding: 10px; border-radius: 5px;">
+            <div style='margin-bottom:20px; padding:10px; background-color:{bg_color}; border-radius:8px;'>
+                <span style='font-weight:{weight}; color:{color}; font-style:{style_italic};'>{prefix}</span>
+                <div style='margin-top:5px; line-height:1.6; font-family:{self.font_family}; font-size:{self.font_size}px;'>
                     {message}
                 </div>
             </div>
             """
-            
+
             self.chat_display.insertHtml(html_content)
             self.chat_display.ensureCursorVisible()
         except Exception as e:
@@ -1083,17 +1557,101 @@ class MainApplication(QMainWindow):
 
     def attach_file(self):
         try:
+            if len(self.attached_files) >= 10:
+                QMessageBox.warning(self, "Uyarı", "En fazla 10 dosya ekleyebilirsiniz")
+                return
+
             file_path, _ = QFileDialog.getOpenFileName(self, "Dosya Seç", "", "Tüm Dosyalar (*)")
             if file_path:
+                valid_extensions = ['.txt', '.py', '.js', '.html', '.css', '.json', '.pdf', '.doc', '.docx', '.md']
+                if not any(file_path.lower().endswith(ext) for ext in valid_extensions):
+                    QMessageBox.warning(self, "Desteklenmeyen Dosya", "Seçilen dosya tipi desteklenmiyor. Lütfen metin tabanlı dosyalar ekleyin.")
+                    return
+
                 file_name = os.path.basename(file_path)
                 self.attached_files.append(file_path)
-                
-                # Mesaj girişine bilgi ekle
-                cursor = self.message_input.textCursor()
-                cursor.insertHtml(f'<span style="color:#4CD964;">📎 {file_name} eklendi</span><br>')
-                self.message_input.ensureCursorVisible()
+
+                file_widget = QWidget()
+                layout = QHBoxLayout(file_widget)
+                layout.setContentsMargins(0, 0, 0, 0)
+                label = QLabel(f"📎 {file_name}")
+                layout.addWidget(label)
+                remove_btn = QPushButton("✕")
+                remove_btn.setFixedSize(20, 20)
+                remove_btn.setStyleSheet("font-size: 10px; padding: 0;")
+                remove_btn.clicked.connect(lambda _, p=file_path: self.remove_attached_file(p))
+                layout.addWidget(remove_btn)
+
+                item = QListWidgetItem()
+                item.setSizeHint(file_widget.sizeHint())
+                self.attachments_list.addItem(item)
+                self.attachments_list.setItemWidget(item, file_widget)
         except Exception as e:
             logger.error(f"Dosya eklenirken hata: {str(e)}")
+
+    def remove_attached_file(self, file_path):
+        if file_path in self.attached_files:
+            self.attached_files.remove(file_path)
+            self.refresh_attachments_list()
+
+    def refresh_attachments_list(self):
+        self.attachments_list.clear()
+        for path in self.attached_files:
+            file_name = os.path.basename(path)
+            file_widget = QWidget()
+            layout = QHBoxLayout(file_widget)
+            layout.setContentsMargins(0, 0, 0, 0)
+            label = QLabel(f"📎 {file_name}")
+            layout.addWidget(label)
+            remove_btn = QPushButton("✕")
+            remove_btn.setFixedSize(20, 20)
+            remove_btn.setStyleSheet("font-size: 10px; padding: 0;")
+            remove_btn.clicked.connect(lambda _, p=path: self.remove_attached_file(p))
+            layout.addWidget(remove_btn)
+            item = QListWidgetItem()
+            item.setSizeHint(file_widget.sizeHint())
+            self.attachments_list.addItem(item)
+            self.attachments_list.setItemWidget(item, file_widget)
+
+    def eventFilter(self, source, event):
+        if source is self.message_input:
+            if event.type() == QEvent.Type.KeyPress and event.key() in [Qt.Key.Key_Return, Qt.Key.Key_Enter]:
+                if not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
+                    self.send_message()
+                    return True
+            if event.type() == QEvent.Type.DragEnter and event.mimeData().hasUrls():
+                event.acceptProposedAction()
+                return True
+            if event.type() == QEvent.Type.Drop and event.mimeData().hasUrls():
+                for url in event.mimeData().urls():
+                    file_path = url.toLocalFile()
+                    if os.path.isfile(file_path):
+                        if len(self.attached_files) >= 10:
+                            QMessageBox.warning(self, "Uyarı", "En fazla 10 dosya ekleyebilirsiniz")
+                            break
+                        valid_extensions = ['.txt', '.py', '.js', '.html', '.css', '.json', '.pdf', '.doc', '.docx', '.md']
+                        if not any(file_path.lower().endswith(ext) for ext in valid_extensions):
+                            QMessageBox.warning(self, "Desteklenmeyen Dosya", "Seçilen dosya tipi desteklenmiyor. Lütfen metin tabanlı dosyalar ekleyin.")
+                            continue
+                        self.attached_files.append(file_path)
+                        file_name = os.path.basename(file_path)
+                        file_widget = QWidget()
+                        layout = QHBoxLayout(file_widget)
+                        layout.setContentsMargins(0, 0, 0, 0)
+                        label = QLabel(f"📎 {file_name}")
+                        layout.addWidget(label)
+                        remove_btn = QPushButton("✕")
+                        remove_btn.setFixedSize(20, 20)
+                        remove_btn.setStyleSheet("font-size: 10px; padding: 0;")
+                        remove_btn.clicked.connect(lambda _, p=file_path: self.remove_attached_file(p))
+                        layout.addWidget(remove_btn)
+                        item = QListWidgetItem()
+                        item.setSizeHint(file_widget.sizeHint())
+                        self.attachments_list.addItem(item)
+                        self.attachments_list.setItemWidget(item, file_widget)
+                event.acceptProposedAction()
+                return True
+        return super().eventFilter(source, event)
 
     def export_chats(self):
         try:
@@ -1105,20 +1663,63 @@ class MainApplication(QMainWindow):
             )
             
             if file_path:
-                # Sohbet verilerini dışa aktar
                 export_data = {
                     "version": self.VERSION,
                     "export_date": QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate),
-                    "chats": self.chat_data
+                    "chats": {}
                 }
-                
-                with open(file_path, 'w') as f:
+
+                for cid, data in self.chat_data.items():
+                    clean_msgs = []
+                    for m in data["messages"]:
+                        clean = m.copy()
+                        clean["message"] = self.sanitize_text(m["message"])
+                        clean_msgs.append(clean)
+                    export_data["chats"][cid] = {"title": data["title"], "messages": clean_msgs}
+
+                with open(file_path, 'w', encoding='utf-8') as f:
                     json.dump(export_data, f, indent=2, ensure_ascii=False)
                 
                 self.statusBar().showMessage(f"📤 Sohbetler dışa aktarıldı: {file_path}", 5000)
         except Exception as e:
             logger.error(f"Sohbetler dışa aktarılırken hata: {str(e)}")
             QMessageBox.critical(self, "Hata", f"Sohbetler dışa aktarılırken hata oluştu: {str(e)}")
+
+    def export_selected_chat(self):
+        """Yalnızca seçili sohbeti dışa aktar"""
+        try:
+            if not self.active_chat_id or self.active_chat_id not in self.chat_data:
+                return
+
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Sohbeti Dışa Aktar",
+                "",
+                "JSON Dosyaları (*.json);;Tüm Dosyalar (*)"
+            )
+            if not file_path:
+                return
+
+            export_data = {
+                "version": self.VERSION,
+                "export_date": QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate),
+                "chat": self.chat_data[self.active_chat_id]
+            }
+
+            with open(file_path, 'w') as f:
+                json.dump(export_data, f, indent=2, ensure_ascii=False)
+
+            self.statusBar().showMessage(f"📤 Sohbet dışa aktarıldı: {file_path}", 5000)
+        except Exception as e:
+            logger.error(f"Sohbet dışa aktarılırken hata: {str(e)}")
+            QMessageBox.critical(self, "Hata", f"Sohbet dışa aktarılırken hata oluştu: {str(e)}")
+
+    def export_selected_chat(self):
+        if self.active_chat_id and self.active_chat_id in self.chat_data:
+            self.export_chats()
+
+    def sanitize_text(self, text):
+        return re.sub(r"[\U0001F600-\U0001F6FF]", "", text)
 
     def open_theme_settings(self):
         try:
@@ -1230,68 +1831,142 @@ class MainApplication(QMainWindow):
             logger.error(f"Kısayollar kaydedilirken hata: {str(e)}")
             QMessageBox.critical(self, "Hata", f"Kısayollar kaydedilirken hata oluştu: {str(e)}")
 
+    def open_font_settings(self):
+        try:
+            dialog = QDialog(self)
+            dialog.setWindowTitle("📝 Yazı Tipi Ayarları")
+            dialog.setFixedSize(400, 300)
+
+            layout = QVBoxLayout()
+
+            family_combo = QFontComboBox()
+            family_combo.setCurrentFont(QFont(self.font_family))
+
+            size_slider = QSlider(Qt.Orientation.Horizontal)
+            size_slider.setRange(12, 24)
+            size_slider.setValue(self.font_size)
+
+            bold_check = QCheckBox("Kalın başlıklar")
+            bold_check.setChecked(self.label_bold)
+
+            italic_check = QCheckBox("İtalik altyazılar")
+            italic_check.setChecked(self.italic_subtitles)
+
+            layout.addWidget(QLabel("Yazı Tipi"))
+            layout.addWidget(family_combo)
+            layout.addWidget(QLabel("Yazı Boyutu"))
+            layout.addWidget(size_slider)
+            layout.addWidget(bold_check)
+            layout.addWidget(italic_check)
+
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+
+            def save_and_close():
+                self.font_family = family_combo.currentFont().family()
+                self.font_size = size_slider.value()
+                self.label_bold = bold_check.isChecked()
+                self.italic_subtitles = italic_check.isChecked()
+                self.apply_font_settings()
+                self.statusBar().showMessage("✅ Yazı tipi ayarları kaydedildi", 3000)
+                self.save_app_state()
+                dialog.accept()
+
+            buttons.accepted.connect(save_and_close)
+            buttons.rejected.connect(dialog.reject)
+            layout.addWidget(buttons)
+
+            dialog.setLayout(layout)
+            dialog.exec()
+        except Exception as e:
+            logger.error(f"Yazı tipi ayarları açılırken hata: {str(e)}")
+
     def open_model_management(self):
         try:
             self.model_dialog = QDialog(self)
             dialog = self.model_dialog
             dialog.setWindowTitle("🤖 Model Yönetimi")
             dialog.setFixedSize(600, 400)
-            
+
             layout = QVBoxLayout()
-            
+
+            # API Anahtarı
+            api_layout = QHBoxLayout()
+            api_layout.addWidget(QLabel("🔑 OpenRouter API Anahtarı:"))
+            self.api_key_edit = QLineEdit()
+            self.api_key_edit.setPlaceholderText("sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxx")
+            self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+            if self.api_key:
+                self.api_key_edit.setText(self.api_key)
+            api_layout.addWidget(self.api_key_edit, 1)
+
+            # Anahtarı göster/gizle
+            show_key_btn = QPushButton("👁️")
+            show_key_btn.setCheckable(True)
+            show_key_btn.setFixedWidth(30)
+            show_key_btn.toggled.connect(lambda checked: self.api_key_edit.setEchoMode(
+                QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password
+            ))
+            api_layout.addWidget(show_key_btn)
+            layout.addLayout(api_layout)
+
+            # Anahtar almak için bağlantı
+            key_link = QLabel('<a href="https://openrouter.ai/keys">🔑 Ücretsiz API Anahtarı Al</a>')
+            key_link.setOpenExternalLinks(True)
+            layout.addWidget(key_link)
+
             # Model Seçimi
             model_layout = QHBoxLayout()
-            model_layout.addWidget(QLabel("Aktif Model:"))
+            model_layout.addWidget(QLabel("🤖 Aktif Model:"))
             self.model_combo_dialog = QComboBox()
             self.model_combo_dialog.addItems(["deepseek-chat", "deepseek-coder", "deepseek-math"])
             self.model_combo_dialog.setCurrentText(self.model_combo.currentText())
             model_layout.addWidget(self.model_combo_dialog, 1)
             layout.addLayout(model_layout)
-            
-            # API Anahtarı
-            api_layout = QHBoxLayout()
-            api_layout.addWidget(QLabel("API Anahtarı:"))
-            self.api_key_edit = QLineEdit()
-            self.api_key_edit.setPlaceholderText("sk-xxxxxxxxxxxxxxxxxxxxxxxx")
-            self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-            api_layout.addWidget(self.api_key_edit, 1)
-            layout.addLayout(api_layout)
-            
+
             # Model Bilgileri
-            info_box = QGroupBox("Model Bilgileri")
+            info_box = QGroupBox("ℹ️ DeepSeek R1 Model Bilgileri")
             info_layout = QVBoxLayout()
             self.model_info = QTextEdit()
             self.model_info.setReadOnly(True)
             self.model_info.setHtml("""
-                <b>deepseek-chat</b>: Genel amaçlı sohbet modeli<br>
-                <b>deepseek-coder</b>: Kodlama odaklı model<br>
-                <b>deepseek-math</b>: Matematiksel problem çözme modeli
+                <b>DeepSeek R1</b>: 128K bağlam pencereli güçlü dil modeli<br>
+                <ul>
+                    <li><b>Genel Sohbet</b>: Doğal diyalog yetenekleri</li>
+                    <li><b>Kodlama</b>: Çoklu dil desteği</li>
+                    <li><b>Matematik</b>: Mantıksal akıl yürütme</li>
+                </ul>
+                <p><b>Ücretsiz Kullanım:</b></p>
+                <ul>
+                    <li>Dakikada 5 istek</li>
+                    <li>Günlük 100 istek</li>
+                    <li>128K bağlam penceresi</li>
+                </ul>
+                <b>Dosya Tipi Kısıtlamaları:</b>
+                <ul>
+                    <li>Metin dosyaları (.txt, .py, .js, .html, etc.)</li>
+                    <li>PDF ve Word dokümanları (metin içeriği okunur)</li>
+                    <li><b>Görsel, ses ve video dosyaları desteklenmez</b></li>
+                </ul>
             """)
             info_layout.addWidget(self.model_info)
             info_box.setLayout(info_layout)
             layout.addWidget(info_box)
-            
-            # Güncelleme Butonu - Büyük ikon (48x48)
-            update_btn = QPushButton()
-            update_btn.setIcon(QIcon("icons/update.png"))
-            update_btn.setIconSize(QSize(48, 48))
-            update_btn.setText(" Modelleri Güncelle")
-            update_btn.clicked.connect(self.update_models)
-            layout.addWidget(update_btn)
-            
+
             # Butonlar
-            button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+            button_box = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Save | 
+                QDialogButtonBox.StandardButton.Cancel
+            )
             button_box.button(QDialogButtonBox.StandardButton.Save).setText("Kaydet")
             button_box.button(QDialogButtonBox.StandardButton.Cancel).setText("İptal")
             button_box.accepted.connect(self.save_model_settings)
             button_box.rejected.connect(dialog.reject)
             layout.addWidget(button_box)
-            
+
             dialog.setLayout(layout)
             dialog.exec()
         except Exception as e:
             logger.error(f"Model yönetimi açılırken hata: {str(e)}")
-            QMessageBox.critical(self, "Hata", f"Model yönetimi açılırken hata oluştu: {str(e)}")
             
     def update_models(self):
         """Modelleri güncelle"""
@@ -1303,22 +1978,25 @@ class MainApplication(QMainWindow):
             logger.error(f"Modeller güncellenirken hata: {str(e)}")
 
     def save_model_settings(self):
-        """Model ayarlarını kaydet"""
+        """Model ve API ayarlarını kaydet"""
         try:
             selected_model = self.model_combo_dialog.currentText()
-            api_key = self.api_key_edit.text()
-            
+            api_key = self.api_key_edit.text().strip()
+
+            # API anahtarını kaydet
+            if api_key:
+                self.save_api_key(api_key)
+
             # Ana model seçimini güncelle
             self.model_combo.setCurrentText(selected_model)
-            
-            # Burada ayarları kaydetme işlemi yapılacak
+
             self.statusBar().showMessage(f"✅ {selected_model} modeli ayarlandı", 5000)
             self.save_app_state()
-            
+
             # Diyaloğu kapat
             self.model_dialog.accept()
         except Exception as e:
-            logger.error(f"Model ayarları kaydedilirken hata: {str(e)}")        
+            logger.error(f"Model ayarları kaydedilirken hata: {str(e)}")
             
     def show_about(self):
         try:
@@ -1346,18 +2024,23 @@ class MainApplication(QMainWindow):
             logger.error(f"Güncelleme kontrol edilirken hata: {str(e)}")
     
     def show_chat_context_menu(self, pos):
-        """Sohbet bağlam menüsü (yeniden adlandırma, silme)"""
         try:
-            menu = QMenu()
-        
-            # Yeniden adlandır
-            rename_action = menu.addAction(QIcon("icons/rename.png"), "Yeniden Adlandır")
-            rename_action.triggered.connect(self.rename_selected_chat)
-        
-            # Sil
-            delete_action = menu.addAction(QIcon("icons/delete.png"), "Sil")
-            delete_action.triggered.connect(self.delete_selected_chat)
-        
+            menu = self.chat_display.createStandardContextMenu()
+            translations = {
+                "&Undo": "Geri Al",
+                "&Redo": "İleri Al",
+                "Cu&t": "Kes",
+                "&Copy": "Kopyala",
+                "&Paste": "Yapıştır",
+                "Paste and Match Style": "Biçimle Eşleştirerek Yapıştır",
+                "Delete": "Sil",
+                "Select All": "Tümünü Seç",
+                "Copy Link Location": "Bağlantı Konumunu Kopyala"
+            }
+            for action in menu.actions():
+                text = action.text().split('\t')[0]
+                if text in translations:
+                    action.setText(translations[text])
             menu.exec(self.chat_display.mapToGlobal(pos))
         except Exception as e:
             logger.error(f"Bağlam menüsü gösterilirken hata: {str(e)}")
@@ -1366,78 +2049,111 @@ class MainApplication(QMainWindow):
         """Türkçe metin menüsü"""
         try:
             menu = self.message_input.createStandardContextMenu()
-            # Menü öğelerini Türkçeleştir
             translations = {
                 "&Undo": "Geri Al",
                 "&Redo": "İleri Al",
                 "Cu&t": "Kes",
                 "&Copy": "Kopyala",
                 "&Paste": "Yapıştır",
+                "Paste and Match Style": "Biçimle Eşleştirerek Yapıştır",
                 "Delete": "Sil",
-                "Select All": "Tümünü Seç"
+                "Select All": "Tümünü Seç",
+                "Copy Link Location": "Bağlantı Konumunu Kopyala"
             }
-            
+
             for action in menu.actions():
-                text = action.text()
+                text = action.text().split('\t')[0]
                 if text in translations:
                     action.setText(translations[text])
-            
+
             menu.exec(self.message_input.mapToGlobal(pos))
         except Exception as e:
-            logger.error(f"Metin menüsü gösterilirken hata: {str(e)}")        
+            logger.error(f"Metin menüsü gösterilirken hata: {str(e)}")
 
     def show_chat_list_context_menu(self, pos):
         """Sohbet listesi için bağlam menüsü"""
         try:
-            item = self.chat_list.itemAt(pos)
-            if not item:
-                return
-            
             menu = QMenu()
-        
+
             # Yeniden adlandır
             rename_action = menu.addAction(QIcon("icons/rename.png"), "Yeniden Adlandır")
-            rename_action.triggered.connect(lambda: self.rename_selected_chat())
-        
+            rename_action.triggered.connect(self.rename_selected_chat)
+
             # Sil
             delete_action = menu.addAction(QIcon("icons/delete.png"), "Sil")
-            delete_action.triggered.connect(lambda: self.delete_selected_chat())
-        
-            # Projelere taşı menüsü
-            move_menu = menu.addMenu(QIcon("icons/move.png"), "Projeye Taşı")
-        
-            # Mevcut projeleri listele
-            for i in range(self.projects_tree.topLevelItemCount()):
-                project = self.projects_tree.topLevelItem(i)
-                project_action = move_menu.addAction(project.text(0))
-                project_action.triggered.connect(
-                    lambda checked, p=project, c=item: self.move_chat_to_project(p, c)
-                )
-        
-            menu.exec(self.chat_list.mapToGlobal(pos))
+            delete_action.triggered.connect(self.delete_selected_chat)
+
+            export_action = menu.addAction(QIcon("icons/export.png"), "Sohbeti Dışa Aktar")
+            export_action.triggered.connect(self.export_selected_chat)
+
+            menu.exec(self.chat_display.mapToGlobal(pos))
         except Exception as e:
             logger.error(f"Bağlam menüsü gösterilirken hata: {str(e)}")
 
-    def move_chat_to_project(self, project_item, chat_item):
-        """Sohbeti projeye taşı"""
+    def show_text_context_menu(self, pos):
+        """Türkçe metin menüsü"""
         try:
-            chat_title = chat_item.text()
-            chat_id = chat_item.data(Qt.ItemDataRole.UserRole)
-        
-            # Yeni sohbet öğesi oluştur
-            new_chat = QTreeWidgetItem([f"💬 {chat_title}"])
-            new_chat.setData(0, Qt.ItemDataRole.UserRole, chat_id)
-            new_chat.setFlags(new_chat.flags() | Qt.ItemFlag.ItemIsEditable)
-            project_item.addChild(new_chat)
-            project_item.setExpanded(True)
-        
-            # Özgün sohbeti sil
-            self.chat_list.takeItem(self.chat_list.row(chat_item))
-        
-            self.statusBar().showMessage(f"📂 Sohbet '{chat_title}' projeye taşındı", 3000)
-            self.save_app_state()
+            menu = self.message_input.createStandardContextMenu()
+
+            self.translate_context_menu(menu)
+
+            menu.exec(self.message_input.mapToGlobal(pos))
         except Exception as e:
-            logger.error(f"Sohbet taşınırken hata: {str(e)}")        
+            logger.error(f"Metin menüsü gösterilirken hata: {str(e)}")
+
+    def translate_context_menu(self, menu):
+        """Bağlam menüsü eylemlerini Türkçeye çevir"""
+        translations = {
+            "&Undo": "Geri Al",
+            "&Redo": "İleri Al",
+            "Cu&t": "Kes",
+            "&Copy": "Kopyala",
+            "&Paste": "Yapıştır",
+            "Delete": "Sil",
+            "Select All": "Tümünü Seç",
+            "Paste and Match Style": "Biçimle Eşleştirerek Yapıştır",
+            "Copy Link Location": "Bağlantı Konumunu Kopyala"
+        }
+        for action in menu.actions():
+            text = action.text().split('\t')[0]
+            if text in translations:
+                action.setText(translations[text])
+
+    def move_to_main_chat_list(self, item):
+        """Sohbeti ana sohbet listesine taşı"""
+        chat_title = item.text()
+        chat_id = item.data(Qt.ItemDataRole.UserRole)
+
+        new_item = QListWidgetItem(chat_title)
+        new_item.setData(Qt.ItemDataRole.UserRole, chat_id)
+        new_item.setFlags(new_item.flags() | Qt.ItemFlag.ItemIsEditable)
+        self.chat_list.addItem(new_item)
+
+        parent = item.parent()
+        if parent:
+            parent.removeChild(item)
+
+        self.statusBar().showMessage("📂 Sohbet ana listeye taşındı", 3000)
+        self.save_app_state()
+
+    def project_drag_enter(self, event):
+        if event.mimeData().hasFormat('application/x-qabstractitemmodeldatalist'):
+            event.acceptProposedAction()
+
+    def project_drop_event(self, event):
+        item = self.projects_tree.itemAt(event.position().toPoint())
+        if item and not item.parent():
+            chat_item = self.chat_list.currentItem()
+            if chat_item:
+                self.move_chat_to_project(item, chat_item)
+                event.acceptProposedAction()
+        elif not item:
+            chat_item = self.chat_list.currentItem()
+            if chat_item:
+                self.move_to_main_chat_list(chat_item)
+                event.acceptProposedAction()
+        else:
+            event.ignore()
     
     def rename_selected_chat(self):
         """Seçili sohbeti yeniden adlandır"""
@@ -1474,10 +2190,54 @@ class MainApplication(QMainWindow):
                 self.save_app_state()
         except Exception as e:
             logger.error(f"Sohbet silinirken hata: {str(e)}")
+
+    def load_project_context(self, current, previous):
+        if current and not current.parent():
+            pid = id(current)
+            if pid not in self.project_context:
+                self.project_context[pid] = {"instructions": "", "files": []}
+            ctx = self.project_context[pid]
+            self.project_instructions.setText(ctx["instructions"])
+            self.project_files_list.clear()
+            for f in ctx["files"]:
+                self.project_files_list.addItem(f)
+
+    def add_project_file(self):
+        current = self.projects_tree.currentItem()
+        if current and not current.parent():
+            file_path, _ = QFileDialog.getOpenFileName(self, "Dosya Seç", "", "Tüm Dosyalar (*)")
+            if file_path:
+                pid = id(current)
+                if pid not in self.project_context:
+                    self.project_context[pid] = {"instructions": "", "files": []}
+                self.project_context[pid]["files"].append(file_path)
+                self.project_files_list.addItem(file_path)
+                self.save_project_context()
+
+    def remove_project_file(self):
+        current = self.projects_tree.currentItem()
+        item = self.project_files_list.currentItem()
+        if current and not current.parent() and item:
+            pid = id(current)
+            file_path = item.text()
+            self.project_files_list.takeItem(self.project_files_list.row(item))
+            if pid in self.project_context and file_path in self.project_context[pid]["files"]:
+                self.project_context[pid]["files"].remove(file_path)
+                self.save_project_context()
+
+    def save_project_context(self):
+        current = self.projects_tree.currentItem()
+        if current and not current.parent():
+            pid = id(current)
+            self.project_context[pid] = {
+                "instructions": self.project_instructions.toPlainText(),
+                "files": [self.project_files_list.item(i).text() for i in range(self.project_files_list.count())]
+            }
     
     def save_app_state(self):
         """Uygulama durumunu kaydet"""
         try:
+            self.save_project_context()
             # Chat listesini kaydet
             chat_items = []
             for i in range(self.chat_list.count()):
@@ -1511,6 +2271,11 @@ class MainApplication(QMainWindow):
                 "chat_data": self.chat_data,
                 "model": self.model_combo.currentText(),
                 "theme": self.current_theme,
+                "font_family": self.font_family,
+                "font_size": self.font_size,
+                "label_bold": self.label_bold,
+                "italic_subtitles": self.italic_subtitles,
+                "project_context": self.project_context,
                 "shortcuts": {
                     "send": self.send_action.shortcut().toString(),
                     "newline": self.newline_action.shortcut().toString(),
@@ -1575,7 +2340,14 @@ class MainApplication(QMainWindow):
                     theme = app_state.get("theme", "dark")
                     self.apply_theme(theme)
                     self.current_theme = theme
-                    
+
+                    self.font_family = app_state.get("font_family", "Arial")
+                    self.font_size = app_state.get("font_size", 16)
+                    self.label_bold = app_state.get("label_bold", True)
+                    self.italic_subtitles = app_state.get("italic_subtitles", False)
+                    self.apply_font_settings()
+                    self.project_context = app_state.get("project_context", {})
+
                     # Kısayolları yükle
                     shortcuts = app_state.get("shortcuts", {})
                     self.send_action.setShortcut(QKeySequence(shortcuts.get("send", "Ctrl+Return")))

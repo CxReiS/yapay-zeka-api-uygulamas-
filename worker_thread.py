@@ -8,37 +8,44 @@ logger = logging.getLogger('DeepSeekChat.worker')
 class WorkerThread(QThread):
     response_received = pyqtSignal(str, float)  # Yanıt metni, geçen süre
     error_occurred = pyqtSignal(str)
+    thinking_updated = pyqtSignal(str)
 
-    def __init__(self, api_key, conversation_history, user_message, model="deepseek-chat", memory=""):
+    def __init__(self, api_key, conversation_history, model="deepseek/deepseek-r1:free"):
         super().__init__()
         self.api_key = api_key
         self.conversation_history = conversation_history
-        self.user_message = user_message
-        self.memory = memory
         self.model = model
-        self.endpoint = "https://api.deepseek.com/v1/chat/completions"
+        self.endpoint = "https://openrouter.ai/api/v1/chat/completions"
 
     def run(self):
         try:
-            # Mesaj geçmişini hazırla
-            messages = [{"role": "system", "content": self.memory}] if self.memory else []
-            for msg in self.conversation_history:
-                messages.append({"role": msg['role'], "content": msg['content']})
-            messages.append({"role": "user", "content": self.user_message})
-            
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://github.com/CxReiS/DeepSeekChat",
+                "X-Title": "DeepSeek Chat",
             }
-            
+
             payload = {
                 "model": self.model,
-                "messages": messages,
+                "messages": self.conversation_history,
                 "temperature": 0.7,
-                "max_tokens": 2000
+                "max_tokens": 4096,
             }
-            
+
             start_time = time.time()
+
+            # Düşünme adımlarını gönder
+            self.thinking_updated.emit("🤔 Düşünüyorum...")
+            thinking_steps = [
+                "🔍 Sorunuzu analiz ediyorum...",
+                "🧠 Bilgilerimi tarıyorum...",
+                "💡 En iyi cevabı oluşturuyorum..."
+            ]
+            for step in thinking_steps:
+                time.sleep(0.8)
+                self.thinking_updated.emit(step)
+
             response = requests.post(self.endpoint, json=payload, headers=headers, timeout=30)
             response_time = time.time() - start_time
             
