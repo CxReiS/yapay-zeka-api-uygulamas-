@@ -6,9 +6,14 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt, QSize
 import json
 import os
+import logging
+from main import MainApplication
+from user_manager import UserManager
+
+logger = logging.getLogger('DeepSeekChat.login_window')
 
 class LoginWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, user_manager: UserManager):
         super().__init__()
         self.user_manager = user_manager
         self.setWindowTitle("🔐 DeepSeek Chat - Giriş")
