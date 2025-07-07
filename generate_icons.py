@@ -1,7 +1,7 @@
 import os
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QPixmap, QPainter, QFont, QColor, QLinearGradient, QBrush
-from PyQt6.QtCore import Qt, QRect
+from PyQt6.QtGui import QPixmap, QPainter, QFont, QColor, QLinearGradient, QBrush, QIcon, QPen, QPolygon
+from PyQt6.QtCore import Qt, QRect, QSize, QPoint
 
 def create_icon(text, color_hex, size=128):
     """Büyük ve profesyonel ikon oluşturma"""
@@ -32,9 +32,29 @@ def create_icon(text, color_hex, size=128):
     painter.setPen(QColor(0, 0, 0, 150))
     painter.drawText(rect.adjusted(2, 2, 2, 2), Qt.AlignmentFlag.AlignCenter, text)
     
-    # Ana metin
+    # Ana metn
     painter.setPen(Qt.GlobalColor.white)
     painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+    
+    painter.end()
+    return pixmap
+
+def create_down_arrow_icon(size=16):
+    """Basit aşağı ok ikonu oluştur"""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    
+    # Aşağı ok çiz
+    painter.setPen(QPen(QColor(Qt.GlobalColor.white), 2))
+    arrow_points = QPolygon([
+        QPoint(size//4, size//3),
+        QPoint(size//2, 2*size//3),
+        QPoint(3*size//4, size//3)
+    ])
+    painter.drawPolyline(arrow_points)
     
     painter.end()
     return pixmap
@@ -60,6 +80,7 @@ def generate_all_icons():
         "keyboard": ("⌨", "#5AC8FA"),
         "model": ("🤖", "#AF52DE"),
         "info": ("ℹ", "#007AFF"),
+        "down_arrow": ("", "#000000")  # Özel çizim için
     }
 
     # icons klasörü yoksa oluştur
@@ -69,7 +90,12 @@ def generate_all_icons():
 
     for name, (text, color) in icons.items():
         icon_path = f"icons/{name}.png"
-        pixmap = create_icon(text, color, 128)
+        
+        if name == "down_arrow":
+            pixmap = create_down_arrow_icon(16)
+        else:
+            pixmap = create_icon(text, color, 128)
+            
         pixmap.save(icon_path)
         print(f"İkon oluşturuldu: {icon_path}")
 

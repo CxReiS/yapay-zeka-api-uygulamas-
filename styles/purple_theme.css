@@ -1,0 +1,155 @@
+QMainWindow { 
+	background-color: #3d2a5b; 
+	color: #ffffff; 
+}
+
+QWidget { 
+	background-color: #3d2a5b; 
+	color: #ffffff; 
+}
+
+QTextEdit, QLineEdit, QListWidget, QTreeWidget {
+	background-color: #4a346d;
+	color: #ffffff;
+	border: 1px solid #8a2be2;
+	border-radius: 6px;
+	padding: 8px;
+	selection-background-color: #b366ff;
+	selection-color: white;
+}
+QPushButton {
+	background-color: #8a2be2;
+	color: #ffffff;
+	border: 1px solid #9b45e4;
+	border-radius: 6px;
+	padding: 8px 12px;
+	min-width: 100px;
+}
+
+QPushButton:hover { 
+	background-color: #9b45e4; 
+}
+
+QPushButton:pressed { 
+	background-color: #6c1fb8; 
+}
+
+QComboBox {
+	background-color: #4a346d;
+	color: #ffffff;
+	border: 1px solid #8a2be2;
+	border-radius: 6px;
+	padding: 5px;
+}
+QComboBox::drop-down {
+	subcontrol-origin: padding;
+	subcontrol-position: top right;
+	width: 20px;
+	border-left-width: 1px;
+	border-left-color: #8a2be2;
+	border-left-style: solid;
+	border-top-right-radius: 6px;
+	border-bottom-right-radius: 6px;
+}
+QTabWidget::pane { 
+	border: 1px solid #8a2be2; 
+	background: #4a346d; 
+}
+
+QTabBar::tab { 
+	background: #8a2be2; 
+	color: #ffffff; 
+	padding: 8px 12px; 
+	border-top-left-radius: 4px; 
+	border-top-right-radius: 4px; 
+	margin-right: 2px; 
+}
+
+QTabBar::tab:selected { 
+	background: #b366ff; 
+	color: white; 
+}
+
+QScrollBar:vertical { 
+	border: none; 
+	background: #4a346d; 
+	width: 10px; 
+	margin: 0; 
+}
+
+QScrollBar::handle:vertical { 
+	background: #9b45e4; 
+	min-height: 20px; 
+	border-radius: 5px; 
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { 
+	height: 0px; 
+}
+
+QGroupBox { 
+	border: 1px solid #8a2be2; 
+	border-radius: 6px; 
+	margin-top: 1ex; 
+	padding-top: 10px; 
+	font-weight: bold; 
+}
+
+QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top center; 
+	padding: 0 5px; 
+}
+
+/* ORTAK STİLLER (Tüm temalarda geçerli) */
+QPushButton:checked {
+    background-color: #4a76cd;
+    color: white;
+    border: 1px solid #3a5f9e;
+}
+
+QListWidget::item:selected {
+    background-color: #4a76cd;
+    color: white;
+}
+
+QTreeWidget::item:selected {
+    background-color: #4a76cd;
+    color: white;
+}
+
+QStatusBar {
+    background-color: #1b2e4a;
+    color: #ffffff;
+    border-top: 1px solid #275a8e;
+}
+
+QMessageBox {
+    background-color: #1b2e4a;
+}
+
+QMessageBox QLabel {
+    color: #ffffff;
+}
+
+QMessageBox QPushButton {
+    min-width: 80px;
+    background-color: #275a8e;
+    color: #ffffff;
+    border: 1px solid #1d4a7a;
+}
+
+/* Tema seçimi butonları - hover efektleri */
+QPushButton#btn_theme_dark:hover {
+    background-color: #3a3a3a;
+}
+QPushButton#btn_theme_light:hover {
+    background-color: #e0e0e0;
+}
+QPushButton#btn_theme_blue:hover {
+    background-color: #289cff;
+}
+QPushButton#btn_theme_green:hover {
+    background-color: #4cd68f;
+}
+QPushButton#btn_theme_purple:hover {
+    background-color: #a25df0;
+}

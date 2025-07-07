@@ -1,0 +1,168 @@
+/* Modern Açık Tema */
+QMainWindow {
+	background-color: #f5f7fa;
+	color: #333333;
+}
+
+/* Genel Widget'lar */
+QWidget {
+	background-color: #f5f7fa;
+	color: #333333;
+}
+
+/* Metin Girişleri */
+QTextEdit, QLineEdit, QListWidget, QTreeWidget {
+	background-color: #ffffff;
+	color: #333333;
+	border: 1px solid #d1d9e6;
+	border-radius: 6px;
+	padding: 8px;
+	selection-background-color: #4a76cd;
+	selection-color: white;
+}
+
+/* Butonlar */
+QPushButton {
+	background-color: #ffffff;
+	color: #333333;
+	border: 1px solid #d1d9e6;
+	border-radius: 6px;
+	padding: 8px 12px;
+	min-width: 100px;
+}
+
+QPushButton:hover {
+	background-color: #f0f4f9;
+}
+
+QPushButton:pressed {
+	background-color: #e4eaf3;
+}
+
+/* Açılır Menüler */
+QComboBox {
+	background-color: #ffffff;
+	color: #333333;
+	border: 1px solid #d1d9e6;
+	border-radius: 6px;
+	padding: 5px;
+}
+
+QComboBox::drop-down {
+	subcontrol-origin: padding;
+	subcontrol-position: top right;
+	width: 20px;
+	border-left-width: 1px;
+	border-left-color: #d1d9e6;
+	border-left-style: solid;
+	border-top-right-radius: 6px;
+	border-bottom-right-radius: 6px;
+}
+
+/* Sekmeler */
+QTabWidget::pane {
+	border: 1px solid #d1d9e6;
+	background: #ffffff;
+}
+
+QTabBar::tab {
+	background: #f0f4f9;
+	color: #333333;
+	padding: 8px 12px;
+	border-top-left-radius: 4px;
+	border-top-right-radius: 4px;
+	margin-right: 2px;
+}
+
+QTabBar::tab:selected {
+	background: #4a76cd;
+	color: white;
+}
+
+/* ScrollBar */
+QScrollBar:vertical {
+	border: none;
+	background: #ffffff;
+	width: 10px;
+	margin: 0;
+}
+
+QScrollBar::handle:vertical {
+	background: #d1d9e6;
+	min-height: 20px;
+	border-radius: 5px;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+	height: 0px;
+}
+
+/* Grup Kutuları */
+QGroupBox {
+	border: 1px solid #d1d9e6;
+	border-radius: 6px;
+	margin-top: 1ex;
+	padding-top: 10px;
+	font-weight: bold;
+}
+
+QGroupBox::title {
+	subcontrol-origin: margin;
+	subcontrol-position: top center;
+	padding: 0 5px;
+}
+
+/* ORTAK STİLLER (Tüm temalarda geçerli) */
+QPushButton:checked {
+    background-color: #4a76cd;
+    color: white;
+    border: 1px solid #3a5f9e;
+}
+
+QListWidget::item:selected {
+    background-color: #4a76cd;
+    color: white;
+}
+
+QTreeWidget::item:selected {
+    background-color: #4a76cd;
+    color: white;
+}
+
+QStatusBar {
+    background-color: #1b2e4a;
+    color: #ffffff;
+    border-top: 1px solid #275a8e;
+}
+
+QMessageBox {
+    background-color: #1b2e4a;
+}
+
+QMessageBox QLabel {
+    color: #ffffff;
+}
+
+QMessageBox QPushButton {
+    min-width: 80px;
+    background-color: #275a8e;
+    color: #ffffff;
+    border: 1px solid #1d4a7a;
+}
+
+/* Tema seçimi butonları - hover efektleri */
+QPushButton#btn_theme_dark:hover {
+    background-color: #3a3a3a;
+}
+QPushButton#btn_theme_light:hover {
+    background-color: #e0e0e0;
+}
+QPushButton#btn_theme_blue:hover {
+    background-color: #289cff;
+}
+QPushButton#btn_theme_green:hover {
+    background-color: #4cd68f;
+}
+QPushButton#btn_theme_purple:hover {
+    background-color: #a25df0;
+}
