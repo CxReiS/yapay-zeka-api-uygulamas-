@@ -1,0 +1,37 @@
+/* Tüm temalar için ortak stiller */
+QPushButton:checked {
+    background-color: #4a76cd;
+    color: white;
+    border: 1px solid #3a5f9e;
+}
+
+QListWidget::item:selected {
+    background-color: #4a76cd;
+    color: white;
+}
+
+QTreeWidget::item:selected {
+    background-color: #4a76cd;
+    color: white;
+}
+
+QStatusBar {
+    background-color: #1b2e4a;
+    color: #ffffff;
+    border-top: 1px solid #275a8e;
+}
+
+QMessageBox {
+    background-color: #1b2e4a;
+}
+
+QMessageBox QLabel {
+    color: #ffffff;
+}
+
+QMessageBox QPushButton {
+    min-width: 80px;
+    background-color: #275a8e;
+    color: #ffffff;
+    border: 1px solid #1d4a7a;
+}

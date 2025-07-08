@@ -1,0 +1,31 @@
+/* Özel bileşenler için stiller */
+QListView::item {
+    padding: 6px;
+    min-height: 32px;
+    border: none;
+    border-bottom: 1px solid #3a3a3a;
+}
+
+QListView::item:selected {
+    background-color: #4a76cd;
+    color: white;
+    border-radius: 4px;
+}
+
+QListView::item:hover {
+    background-color: #3a3a3a;
+}
+
+QGroupBox {
+    border: 1px solid #2d2d2d;
+    border-radius: 6px;
+    margin-top: 1ex;
+    padding-top: 10px;
+    font-weight: bold;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top center;
+    padding: 0 5px;
+}

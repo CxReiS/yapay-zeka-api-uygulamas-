@@ -1,0 +1,22 @@
+/* Ana layout ve grid sistemleri için stiller */
+QMainWindow {
+    background-color: #2D2D30;
+    color: #FFFFFF;
+}
+
+QWidget {
+    background-color: #121212;
+    color: #e0e0e0;
+}
+
+QTextEdit {
+    background-color: #1E1E1E;
+    color: #D4D4D4;
+}
+
+QLineEdit {
+    background-color: #252526;
+    color: #D4D4D4;
+    border: 1px solid #3C3C40;
+    padding: 5px;
+}
