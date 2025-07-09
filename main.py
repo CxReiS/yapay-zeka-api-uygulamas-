@@ -677,14 +677,14 @@ class MainApplication(QMainWindow):
             key_link.setOpenExternalLinks(True)
             layout.addWidget(key_link)
 
-            # Model ID
+            # Model listesi
             model_id_layout = QHBoxLayout()
             model_id_layout.addWidget(QLabel("🆔 Model ID:"))
-            self.model_id_edit = QLineEdit()
-            self.model_id_edit.setPlaceholderText("deepseek/deepseek-r1:free")
+            self.model_combo_dialog = QComboBox()
             if self.model_id:
-                self.model_id_edit.setText(self.model_id)
-            model_id_layout.addWidget(self.model_id_edit, 1)
+                self.model_combo_dialog.addItem(self.model_id)
+                self.model_combo_dialog.setCurrentText(self.model_id)
+            model_id_layout.addWidget(self.model_combo_dialog, 1)
             layout.addLayout(model_id_layout)
 
             # Model Bilgileri
@@ -717,15 +717,15 @@ class MainApplication(QMainWindow):
             layout.addWidget(info_box)
 
             # Butonlar
-            button_box = QDialogButtonBox(
-                QDialogButtonBox.StandardButton.Save | 
-                QDialogButtonBox.StandardButton.Cancel
-            )
-            button_box.button(QDialogButtonBox.StandardButton.Save).setText("Kaydet")
-            button_box.button(QDialogButtonBox.StandardButton.Cancel).setText("İptal")
-            button_box.accepted.connect(self.save_model_settings)
-            button_box.rejected.connect(dialog.reject)
-            layout.addWidget(button_box)
+            btn_layout = QHBoxLayout()
+            self.fetch_models_btn = QPushButton("Çağır")
+            self.fetch_models_btn.clicked.connect(self.fetch_models)
+            save_btn = QPushButton("Kaydet")
+            save_btn.clicked.connect(self.save_model_settings)
+            btn_layout.addWidget(self.fetch_models_btn)
+            btn_layout.addStretch()
+            btn_layout.addWidget(save_btn)
+            layout.addLayout(btn_layout)
 
             dialog.setLayout(layout)
             dialog.exec()
@@ -736,12 +736,42 @@ class MainApplication(QMainWindow):
         """Model ayarlarını kaydet"""
         try:
             api_key = self.api_key_edit.text().strip()
-            model_id = self.model_id_edit.text().strip()
+            model_id = self.model_combo_dialog.currentText().strip()
             self.save_api_key(api_key, model_id)
             if hasattr(self, "model_dialog"):
                 self.model_dialog.accept()
         except Exception as e:
             logger.error(f"Model ayarları kaydedilirken hata: {str(e)}")
+
+    def fetch_models(self):
+        """OpenRouter'dan model listesini çağır"""
+        try:
+            api_key = self.api_key_edit.text().strip()
+            if not api_key:
+                QMessageBox.warning(self, "Uyarı", "Önce API anahtarını girin")
+                return
+            url = f"{self.api_base_url}/models"
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "HTTP-Referer": "https://github.com/CxReiS/DeepSeekChat",
+                "X-Title": "DeepSeek Chat",
+            }
+            response = requests.get(url, headers=headers, timeout=30)
+            if response.status_code == 200:
+                models = response.json().get("data", [])
+                self.model_combo_dialog.clear()
+                for m in models:
+                    if isinstance(m, dict) and "id" in m:
+                        self.model_combo_dialog.addItem(m["id"])
+                if self.model_id:
+                    idx = self.model_combo_dialog.findText(self.model_id)
+                    if idx >= 0:
+                        self.model_combo_dialog.setCurrentIndex(idx)
+            else:
+                QMessageBox.warning(self, "Hata", "Model listesi alınamadı")
+        except Exception as e:
+            logger.error(f"Modeller alınırken hata: {str(e)}")
+            QMessageBox.warning(self, "Hata", str(e))
 
     def setup_shortcuts(self):
         
@@ -1627,17 +1657,6 @@ class MainApplication(QMainWindow):
             # Aktif modeli al
             model_name = self.model_combo.currentText()
             
-            # API iş parçacığı
-            self.worker = WorkerThread(
-                api_key="demo-key",
-                conversation_history=[{"role": msg['sender'], "content": msg['message']} for msg in self.chat_data[self.active_chat_id]["messages"]],
-                model=model_name
-            )
-            self.worker.thinking_updated.connect(self.handle_thinking_update)
-            self.worker.response_received.connect(lambda reply, t: self.handle_api_response(reply, model_name))
-            self.worker.error_occurred.connect(lambda err: self.statusBar().showMessage(err, 5000))
-            self.worker.start()
-            self.statusBar().showMessage("⏳ DeepSeek yanıt oluşturuyor...")
             if self.api_key:
                 history = []
                 for msg in self.chat_data[self.active_chat_id]["messages"]:
@@ -1645,11 +1664,13 @@ class MainApplication(QMainWindow):
                     history.append({"role": role, "content": msg["message"]})
                 target_model = self.model_id or self.model_mapping.get(model_name, "deepseek/deepseek-r1:free")
                 self.worker = WorkerThread(self.api_key, history, target_model)
+                self.worker.thinking_updated.connect(self.handle_thinking_update)
                 self.worker.response_received.connect(lambda reply, _: self.handle_api_response(reply, model_name))
                 self.worker.error_occurred.connect(lambda err: self.handle_api_error(err, model_name))
                 self.worker.start()
+                self.statusBar().showMessage("⏳ DeepSeek yanıt oluşturuyor...")
             else:
-                QTimer.singleShot(1500, lambda: self.simulate_response(model_name))
+                self.simulate_response(model_name)
             
             # Ekli dosyaları temizle
             self.attached_files = []
@@ -1748,6 +1769,21 @@ class MainApplication(QMainWindow):
         if file_path in self.attached_files:
             self.attached_files.remove(file_path)
             self.refresh_attachments_list()
+
+    def handle_thinking_update(self, text):
+        """Düşünme aşamalarını durum çubuğunda göster"""
+        self.statusBar().showMessage(text, 1000)
+
+    def simulate_response(self, model_name):
+        """Gerçek çağrı başarısız olduğunda örnek yanıt üret"""
+        reply = f"{model_name} modeli yanıt veremedi."
+        self.append_message("assistant", reply)
+        if self.active_chat_id:
+            self.chat_data[self.active_chat_id]["messages"].append({
+                "sender": "assistant",
+                "message": reply,
+                "timestamp": QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate),
+            })
             
     def handle_exception(self, exc_type, exc_value, exc_traceback):
         """Özel hata yöneticisi"""
