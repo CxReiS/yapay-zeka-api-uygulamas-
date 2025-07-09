@@ -48,11 +48,7 @@ class MainApplication(QMainWindow):
         self.project_context = {}
         self.remote_enabled = False
         self.local_model_mapping = {"Ollama (local)": "gemma:2b"}
-        self.remote_model_mapping = {
-            "deepseek-chat": "deepseek/deepseek-r1:free",
-            "deepseek-coder": "deepseek/deepseek-coder:33b",
-            "deepseek-math": "deepseek/deepseek-math:7b",
-        }
+        self.remote_model_mapping = {}
         self.model_mapping = {}
         
         self.projeler = []
@@ -661,7 +657,8 @@ class MainApplication(QMainWindow):
 
             # Uzak API kullanımı
             self.remote_api_check = QCheckBox("OpenRouter API Kullan")
-            self.remote_api_check.setChecked(self.remote_enabled)
+            self.remote_api_check.setChecked(False)
+            self.remote_api_check.setEnabled(False)
             self.remote_api_check.toggled.connect(self.toggle_remote_api_usage)
             layout.addWidget(self.remote_api_check)
 
@@ -671,6 +668,7 @@ class MainApplication(QMainWindow):
             self.api_key_edit = QLineEdit()
             self.api_key_edit.setPlaceholderText("sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxx")
             self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+            self.api_key_edit.setEnabled(False)
             if self.api_key:
                 self.api_key_edit.setText(self.api_key)
             api_layout.addWidget(self.api_key_edit, 1)
@@ -750,6 +748,7 @@ class MainApplication(QMainWindow):
             # Butonlar
             btn_layout = QHBoxLayout()
             self.fetch_models_btn = QPushButton("Çağır")
+            self.fetch_models_btn.setEnabled(False)
             self.fetch_models_btn.clicked.connect(self.fetch_models)
             save_btn = QPushButton("Kaydet")
             save_btn.clicked.connect(self.save_model_settings)
@@ -762,11 +761,7 @@ class MainApplication(QMainWindow):
 
             # Başlangıçta yerleşik modelleri göster
             self.populate_model_list()
-            self.toggle_remote_api_usage(self.remote_enabled)
-
-            # Otomatik olarak modelleri çağır
-            if self.api_key and self.remote_enabled:
-                QTimer.singleShot(100, self.fetch_models)
+            self.toggle_remote_api_usage(False)
 
             dialog.exec()
         except Exception as e:
@@ -808,57 +803,16 @@ class MainApplication(QMainWindow):
             self.model_combo_dialog.removeItem(idx)
 
     def toggle_remote_api_usage(self, enabled):
-        """Uzak API alanlarını etkinleştir veya devre dışı bırak"""
-        self.remote_enabled = enabled
-        self.api_key_edit.setEnabled(enabled)
-        self.fetch_models_btn.setEnabled(enabled)
+        """Uzak API alanlarını devre dışı bırak"""
+        self.remote_enabled = False
+        self.api_key_edit.setEnabled(False)
+        self.fetch_models_btn.setEnabled(False)
         self.update_model_combo()
 
     def fetch_models(self):
         """OpenRouter'dan model listesini çağır"""
         try:
-            if not self.remote_enabled:
-                QMessageBox.information(self, "Bilgi", "Uzak API devre dışı.")
-                return
-            api_key = self.api_key_edit.text().strip()
-            if not api_key:
-                QMessageBox.warning(self, "Uyarı", "Önce API anahtarını girin")
-                return
-            previous = self.model_combo_dialog.currentText()
-            url = f"{self.api_base_url}/models"
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "HTTP-Referer": "https://github.com/CxReiS/DeepSeekChat",
-                "X-Title": "DeepSeek Chat",
-            }
-            response = requests.get(url, headers=headers, timeout=30)
-            if response.status_code == 200:
-                models = response.json().get("data", [])
-                filtered = []
-                for m in models:
-                    if isinstance(m, dict) and "id" in m:
-                        if self.no_logging_toggle.isChecked() and m.get("privacy", {}).get("prompt_logging", True):
-                            continue
-                        filtered.append(m["id"])
-                if filtered:
-                    self.populate_model_list(filtered)
-                    if previous in filtered:
-                        self.model_combo_dialog.setCurrentText(previous)
-                    self.statusBar().showMessage("✅ Modeller yüklendi", 3000)
-                else:
-                    QMessageBox.information(self, "Bilgi", "Uygun model bulunamadı. Gizlilik ayarlarınızı kontrol edin.")
-                return
-            else:
-                if response.status_code == 429:
-                    msg = "Günlük kullanım sınırına ulaşıldı"
-                elif response.status_code in (503, 504):
-                    msg = "Model şu an geçici olarak kullanılamıyor"
-                elif response.status_code == 404:
-                    msg = "Model listesi bulunamadı (404)"
-                else:
-                    msg = f"API hatası: {response.status_code}"
-                QMessageBox.warning(self, "Hata", msg)
-                logger.error(msg)
+            QMessageBox.information(self, "Bilgi", "Uzak API devre dışı.")
         except Exception as e:
             logger.error(f"Modeller alınırken hata: {str(e)}")
             QMessageBox.warning(self, "Hata", "Modeller alınamadı, varsayılanlar gösteriliyor")
@@ -1702,7 +1656,7 @@ class MainApplication(QMainWindow):
                     config = json.load(f)
                     self.api_key = config.get("api_key")
                     self.model_id = config.get("model_id")
-                    self.remote_enabled = config.get("remote_enabled", False)
+                    self.remote_enabled = False
 
         except Exception as e:
             logger.error(f"API anahtarı yüklenirken hata: {str(e)}")
@@ -1711,10 +1665,10 @@ class MainApplication(QMainWindow):
         """API anahtarını, model ID'sini ve uzak kullanım durumunu kaydet"""
         try:
             with open("api_config.json", "w") as f:
-                json.dump({"api_key": api_key, "model_id": model_id, "remote_enabled": remote_enabled}, f)
+                json.dump({"api_key": api_key, "model_id": model_id, "remote_enabled": False}, f)
             self.api_key = api_key
             self.model_id = model_id
-            self.remote_enabled = remote_enabled
+            self.remote_enabled = False
             self.statusBar().showMessage("🔑 API anahtarı kaydedildi", 3000)
 
         except Exception as e:
@@ -1743,23 +1697,18 @@ class MainApplication(QMainWindow):
         """Ana model seçim kutusunu güncelle"""
         self.model_combo.clear()
         self.model_mapping = self.local_model_mapping.copy()
-        if self.remote_enabled:
-            self.model_mapping.update(self.remote_model_mapping)
         for name in self.model_mapping:
             self.model_combo.addItem(name)
         for mid in self.custom_models:
             if self.model_combo.findText(mid) == -1:
                 self.model_combo.addItem(mid)
-        if self.model_id and self.model_combo.findText(self.model_id) >= 0:
-            self.model_combo.setCurrentText(self.model_id)
+        self.model_combo.setCurrentIndex(0)
 
     def populate_model_list(self, models=None):
         """Model açılır kutusunu verilen listeyle doldurur"""
         self.model_combo_dialog.clear()
         items = []
         if models is None:
-            if self.remote_enabled:
-                items.extend(self.remote_model_mapping.values())
             items.extend(self.local_model_mapping.values())
             for mid in self.custom_models:
                 if mid not in items:
@@ -1871,16 +1820,11 @@ class MainApplication(QMainWindow):
             for msg in self.chat_data[self.active_chat_id]["messages"]:
                 role = "user" if msg["sender"] == "user" else "assistant"
                 history.append({"role": role, "content": msg["message"]})
-            if self.remote_enabled and self.api_key:
-                target_model = self.model_id or self.remote_model_mapping.get(model_name, model_name)
-                endpoint = f"{self.api_base_url}/chat/completions"
-                self.worker = WorkerThread(self.api_key, history, target_model, endpoint)
-                self.statusBar().showMessage("⏳ OpenRouter yanıt oluşturuyor...")
-            else:
-                target_model = self.local_model_mapping.get(model_name, model_name)
-                endpoint = "http://localhost:11434/api/chat"
-                self.worker = WorkerThread(None, history, target_model, endpoint)
-                self.statusBar().showMessage("⏳ Ollama yanıt oluşturuyor...")
+
+            target_model = self.local_model_mapping.get(model_name, model_name)
+            endpoint = "http://localhost:11434/api/generate"
+            self.worker = WorkerThread(history, target_model, endpoint)
+            self.statusBar().showMessage("⏳ Ollama yanıt oluşturuyor...")
             self.worker.thinking_updated.connect(self.handle_thinking_update)
             self.worker.response_received.connect(lambda reply, _: self.handle_api_response(reply, model_name))
             self.worker.error_occurred.connect(lambda err: self.handle_api_error(err, model_name))
