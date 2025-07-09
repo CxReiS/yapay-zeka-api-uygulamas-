@@ -116,16 +116,19 @@ class MainApplication(QMainWindow):
         # Uygulama durumunu yükle
         self.load_app_state()
         self.apply_font_settings()
-        
+
         # Tema
         self.apply_theme("dark")
-        
+
         # Aktif sohbet ID'si
         self.active_chat_id = None
         self.api_key = None
         self.model_id = None
         self.api_base_url = "https://openrouter.ai/api/v1"
+        self.is_processing = False
+        self.custom_models = []
         self.load_api_key()
+        self.load_custom_models()
         
     # BU METODU EKLEYİN (init'den sonra herhangi bir yere)
     def apply_font_settings(self):
@@ -595,6 +598,9 @@ class MainApplication(QMainWindow):
             self.model_combo_dialog.clear()
             for mid in self.model_mapping.values():
                 self.model_combo_dialog.addItem(mid)
+            for mid in self.custom_models:
+                if self.model_combo_dialog.findText(mid) == -1:
+                    self.model_combo_dialog.addItem(mid)
 
             # Kayıtlı model ID'sini seçili yap
             if self.model_id:
@@ -699,11 +705,25 @@ class MainApplication(QMainWindow):
             model_id_layout = QHBoxLayout()
             model_id_layout.addWidget(QLabel("🆔 Model ID:"))
             self.model_combo_dialog = QComboBox()
+            self.model_combo_dialog.setEditable(False)
             if self.model_id:
                 self.model_combo_dialog.addItem(self.model_id)
                 self.model_combo_dialog.setCurrentText(self.model_id)
             model_id_layout.addWidget(self.model_combo_dialog, 1)
             layout.addLayout(model_id_layout)
+
+            # Yeni model ekleme
+            add_layout = QHBoxLayout()
+            self.new_model_edit = QLineEdit()
+            self.new_model_edit.setPlaceholderText("yeni model id")
+            add_btn = QPushButton("Ekle")
+            add_btn.clicked.connect(self.add_custom_model)
+            remove_btn = QPushButton("Sil")
+            remove_btn.clicked.connect(self.remove_custom_model)
+            add_layout.addWidget(self.new_model_edit, 1)
+            add_layout.addWidget(add_btn)
+            add_layout.addWidget(remove_btn)
+            layout.addLayout(add_layout)
 
             # Model Bilgileri
             info_box = QGroupBox("ℹ️ DeepSeek R1 Model Bilgileri")
@@ -756,10 +776,30 @@ class MainApplication(QMainWindow):
             api_key = self.api_key_edit.text().strip()
             model_id = self.model_combo_dialog.currentText().strip()
             self.save_api_key(api_key, model_id)
+            self.save_custom_models()
             if hasattr(self, "model_dialog"):
                 self.model_dialog.accept()
         except Exception as e:
             logger.error(f"Model ayarları kaydedilirken hata: {str(e)}")
+
+    def add_custom_model(self):
+        mid = self.new_model_edit.text().strip()
+        if not mid:
+            return
+        if mid not in self.custom_models:
+            self.custom_models.append(mid)
+            self.model_combo_dialog.addItem(mid)
+        idx = self.model_combo_dialog.findText(mid)
+        if idx >= 0:
+            self.model_combo_dialog.setCurrentIndex(idx)
+        self.new_model_edit.clear()
+
+    def remove_custom_model(self):
+        mid = self.model_combo_dialog.currentText().strip()
+        if mid in self.custom_models:
+            self.custom_models.remove(mid)
+            idx = self.model_combo_dialog.currentIndex()
+            self.model_combo_dialog.removeItem(idx)
 
     def fetch_models(self):
         """OpenRouter'dan model listesini çağır"""
@@ -795,6 +835,9 @@ class MainApplication(QMainWindow):
             self.model_combo_dialog.clear()
             for mid in self.model_mapping.values():
                 self.model_combo_dialog.addItem(mid)
+            for mid in self.custom_models:
+                if self.model_combo_dialog.findText(mid) == -1:
+                    self.model_combo_dialog.addItem(mid)
             if self.model_id:
                 idx = self.model_combo_dialog.findText(self.model_id)
                 if idx >= 0:
@@ -1610,9 +1653,29 @@ class MainApplication(QMainWindow):
             self.api_key = api_key
             self.model_id = model_id
             self.statusBar().showMessage("🔑 API anahtarı kaydedildi", 3000)
-        
+
         except Exception as e:
             logger.error(f"API anahtarı kaydedilirken hata: {str(e)}")
+
+    def load_custom_models(self):
+        """Kullanıcı tarafından eklenen modelleri yükle"""
+        try:
+            if os.path.exists("custom_models.json"):
+                with open("custom_models.json", "r") as f:
+                    self.custom_models = json.load(f)
+                    for mid in self.custom_models:
+                        self.model_mapping[mid] = mid
+        except Exception as e:
+            logger.error(f"Özel modeller yüklenirken hata: {str(e)}")
+            self.custom_models = []
+
+    def save_custom_models(self):
+        """Eklenen modelleri diske kaydet"""
+        try:
+            with open("custom_models.json", "w") as f:
+                json.dump(self.custom_models, f, indent=2)
+        except Exception as e:
+            logger.error(f"Özel modeller kaydedilirken hata: {str(e)}")
     
     def get_response_from_openrouter(self, model_name):
         """OpenRouter API'sinden yanıt al"""
@@ -1668,6 +1731,8 @@ class MainApplication(QMainWindow):
     
     def send_message(self):
         try:
+            if self.is_processing:
+                return
             message = self.message_input.toPlainText().strip()
             if not message and not self.attached_files:
                 return
@@ -1694,7 +1759,13 @@ class MainApplication(QMainWindow):
                     new_title = new_title[:22] + "..."
                 self.update_chat_title(self.active_chat_id, new_title)
             self.message_input.clear()
-            
+
+            # Girişleri devre dışı bırak
+            self.is_processing = True
+            self.send_btn.setEnabled(False)
+            self.message_input.setEnabled(False)
+            self.send_action.setEnabled(False)
+
             # Aktif modeli al
             model_name = self.model_combo.currentText()
             
@@ -1822,6 +1893,7 @@ class MainApplication(QMainWindow):
                 "message": reply,
                 "timestamp": QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate),
             })
+        self.finish_message_processing()
 
     def handle_api_error(self, error, model_name):
         """API hatası durumunda kullanıcıyı bilgilendir"""
@@ -1836,7 +1908,14 @@ class MainApplication(QMainWindow):
         # Hata diyaloğunu göster
         error_dialog = ErrorDialog(error_msg, self)
         error_dialog.exec()
-    
+
+    def finish_message_processing(self):
+        """Yanıt geldikten sonra girişleri yeniden etkinleştir"""
+        self.is_processing = False
+        self.send_btn.setEnabled(True)
+        self.message_input.setEnabled(True)
+        self.send_action.setEnabled(True)
+
     def handle_api_response(self, reply, model_name):
         try:
             self.append_message("assistant", reply)
@@ -1845,6 +1924,7 @@ class MainApplication(QMainWindow):
                 "message": reply,
                 "timestamp": QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate),
             })
+            self.finish_message_processing()
         except Exception as e:
             logger.error(f"API yanıtı işlenirken hata: {str(e)}")
 
