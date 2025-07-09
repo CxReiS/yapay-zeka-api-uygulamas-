@@ -1108,6 +1108,21 @@ class MainApplication(QMainWindow):
 
         for f in ctx["files"]:
             self.project_files_list.addItem(f)
+
+    def save_project_context(self):
+        """Aktif projenin talimat ve dosya bilgisini kaydet"""
+        try:
+            current = self.projects_tree.currentItem()
+            if not current or current.parent():
+                return
+            pid = id(current)
+            files = [self.project_files_list.item(i).text() for i in range(self.project_files_list.count())]
+            self.project_context[pid] = {
+                "instructions": self.project_instructions.toPlainText(),
+                "files": files,
+            }
+        except Exception as e:
+            logger.error(f"Proje bağlamı kaydedilirken hata: {str(e)}")
     
     def new_chat(self):
         try:
