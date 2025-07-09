@@ -11,6 +11,7 @@ class WorkerThread(QThread):
     thinking_updated = pyqtSignal(str)  # Thinking messages signal
 
     def __init__(self, api_key, conversation_history, model="deepseek/deepseek-r1:free"):
+        """Arka planda API isteği yapan iş parçacığı"""
         super().__init__()
         self.api_key = api_key
         self.conversation_history = conversation_history
@@ -18,6 +19,7 @@ class WorkerThread(QThread):
         self.endpoint = "https://openrouter.ai/api/v1/chat/completions"
 
     def run(self):
+        """API isteğini çalıştır ve sonuçları sinyallerle döndür"""
         try:
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
