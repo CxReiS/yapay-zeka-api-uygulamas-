@@ -33,7 +33,7 @@ class ProjectView(QWidget):
         
         # Proje başlığı
         self.baslik = QLabel(f"📂 {self.project_data.get('name', 'Yeni Proje')}")
-        self.baslik.setObjectName("project_title")
+        self.baslik.setStyleSheet("font-size: 18px; font-weight: bold;")
         layout.addWidget(self.baslik)
         
         # Yeni sohbet butonu

@@ -160,6 +160,7 @@ class MainApplication(QMainWindow):
                             self.chat_data[chat["id"]] = app_state["chat_data"][chat["id"]]
                             self.chat_list.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
                             self.chat_list.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents)
+                            self.chat_list.setStyleSheet("QListView::item { padding: 4px; min-height: 24px; }")
 
                     # Proje ağacını yükle
                     self.projects_tree.clear()
@@ -352,6 +353,22 @@ class MainApplication(QMainWindow):
         # Font ölçümleri için
         self.font_metrics = QFontMetrics(self.font())
         self.chat_list.setWordWrap(False)
+        self.chat_list.setStyleSheet("""
+            QListView::item {
+                padding: 6px;
+                min-height: 32px;
+                border: none;
+                border-bottom: 1px solid #3a3a3a;
+            }
+            QListView::item:selected {
+                background-color: #4a76cd;
+                color: white;
+                border-radius: 4px;
+            }
+            QListView::item:hover {
+                background-color: #3a3a3a;
+            }
+        """)
         
         # Sürükle-bırak özelliği
         self.chat_list.setDragEnabled(True)
@@ -458,7 +475,6 @@ class MainApplication(QMainWindow):
         # Özel Özellikler (Derin Düşünce ve Web'de Ara) - Büyük ikonlar (48x48)
         features_layout = QHBoxLayout()
         self.deep_thought_btn = QPushButton()
-        self.deep_thought_btn.setObjectName("deep_thought_btn")
         self.deep_thought_btn.setIcon(QIcon("icons/brain.png"))
         self.deep_thought_btn.setIconSize(QSize(48, 48))
         self.deep_thought_btn.setText(" Derin Düşünce")
@@ -466,7 +482,6 @@ class MainApplication(QMainWindow):
         self.deep_thought_btn.setCheckable(True)
         features_layout.addWidget(self.deep_thought_btn)
         self.web_search_btn = QPushButton()
-        self.web_search_btn.setObjectName("web_search_btn")
         self.web_search_btn.setIcon(QIcon("icons/search.png"))
         self.web_search_btn.setIconSize(QSize(48, 48))
         self.web_search_btn.setText(" Web'de Ara")
@@ -851,7 +866,7 @@ class MainApplication(QMainWindow):
             layout.addWidget(label)
             remove_btn = QPushButton("✕")
             remove_btn.setFixedSize(20, 20)
-            remove_btn.setObjectName("remove_button")
+            remove_btn.setStyleSheet("font-size: 10px; padding: 0;")
             remove_btn.clicked.connect(lambda _, p=file_path: self.remove_attached_file(p))
             layout.addWidget(remove_btn)
             item = QListWidgetItem()
@@ -1166,7 +1181,7 @@ class MainApplication(QMainWindow):
         """Edit kutusunu genişletir"""
         for editor in self.chat_list.findChildren(QLineEdit):
             editor.setMinimumWidth(300)
-            editor.setObjectName("chat_editor")
+            editor.setStyleSheet("font-size: 14px; padding: 6px;")
            
     def new_project(self):
         try:
@@ -1218,23 +1233,36 @@ class MainApplication(QMainWindow):
     def apply_theme(self, theme_name):
         """Tema uygula - CSS hatalarına karşı korumalı"""
         try:
-            css_files = [
-                "styles/base.css",
-                "styles/layout.css",
-                "styles/components.css",
-                "styles/remove_button.css",
-                "styles/chat_editor.css",
-                "styles/deep_thought_btn.css",
-                "styles/web_search_btn.css",
-                "styles/project_title.css",
-                f"styles/{theme_name}_theme.css",
-            ]
-            combined_css = ""
-            for css_file in css_files:
-                if os.path.exists(css_file):
-                    with open(css_file, "r", encoding="utf-8") as f:
-                        combined_css += f.read() + "\n"
-            self.setStyleSheet(combined_css)
+            # Varsayılan temayı yükle
+            default_css = """
+            QMainWindow {
+                background-color: #2D2D30;
+                color: #FFFFFF;
+            }
+            QTextEdit {
+                background-color: #1E1E1E;
+                color: #D4D4D4;
+                border: 1px solid #3C3C40;
+            }
+            QListWidget, QTreeWidget {
+                background-color: #252526;
+                color: #D4D4D4;
+                border: 1px solid #3C3C40;
+            }
+            QLineEdit {
+                background-color: #252526;
+                color: #D4D4D4;
+                border: 1px solid #3C3C40;
+                padding: 5px;
+            }
+            """
+            self.setStyleSheet(default_css)
+            
+            # Harici CSS dosyası varsa onu yükle
+            css_file = f"styles/{theme_name}_theme.css"
+            if os.path.exists(css_file):
+                with open(css_file, "r", encoding="utf-8") as f:
+                    self.setStyleSheet(f.read())
         except Exception as e:
             logger.error(f"Tema yüklenirken hata: {str(e)}")
             
@@ -1243,6 +1271,10 @@ class MainApplication(QMainWindow):
         # Tema dosyasında zaten tanımlı, ekstra bir şey yapmaya gerek yok
         pass
         
+        if hasattr(self, 'deep_thought_btn'):
+            self.deep_thought_btn.setStyleSheet("background-color: #4a76cd; color: white;")
+        if hasattr(self, 'web_search_btn'):
+            self.web_search_btn.setStyleSheet("background-color: #4a76cd; color: white;")        
     
     def show_project_context_menu(self, pos):
         """Proje bağlam menüsü (silme)"""
@@ -1714,7 +1746,7 @@ class MainApplication(QMainWindow):
                 layout.addWidget(label)
                 remove_btn = QPushButton("✕")
                 remove_btn.setFixedSize(20, 20)
-                remove_btn.setObjectName("remove_button")
+                remove_btn.setStyleSheet("font-size: 10px; padding: 0;")
                 remove_btn.clicked.connect(lambda _, p=file_path: self.remove_attached_file(p))
                 layout.addWidget(remove_btn)
 
