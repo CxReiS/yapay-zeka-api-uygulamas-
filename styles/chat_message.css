@@ -1,0 +1,14 @@
+/* Mesaj kutusu genel stili */
+.chat-message {
+    margin-bottom: 20px;
+    padding: 10px;
+    border-radius: 8px;
+}
+
+.chat-message .sender {
+    font-weight: bold;
+}
+
+.chat-message .message-text {
+    margin-top: 5px;
+}
