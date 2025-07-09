@@ -39,6 +39,7 @@ logger = logging.getLogger("DeepSeekChat")
 class MainApplication(QMainWindow):
     VERSION = "1.0.1"
     def __init__(self):
+        """Ana uygulamanın arayüzünü ve ayarlarını hazırlar"""
         super().__init__()
                 
         # 🔧 Zorunlu başlangıç tanımlamaları
@@ -1227,6 +1228,7 @@ class MainApplication(QMainWindow):
                 "styles/deep_thought_btn.css",
                 "styles/web_search_btn.css",
                 "styles/project_title.css",
+                "styles/chat_message.css",
                 f"styles/{theme_name}_theme.css",
             ]
             combined_css = ""
@@ -1234,6 +1236,14 @@ class MainApplication(QMainWindow):
                 if os.path.exists(css_file):
                     with open(css_file, "r", encoding="utf-8") as f:
                         combined_css += f.read() + "\n"
+
+            weight = "bold" if self.label_bold else "normal"
+            style_italic = "italic" if self.italic_subtitles else "normal"
+            combined_css += (
+                f".chat-message .message-text {{ font-family: {self.font_family}; font-size: {self.font_size}px; }}\n"
+                f".chat-message .sender {{ font-weight: {weight}; font-style: {style_italic}; }}\n"
+            )
+
             self.setStyleSheet(combined_css)
         except Exception as e:
             logger.error(f"Tema yüklenirken hata: {str(e)}")
@@ -1646,30 +1656,24 @@ class MainApplication(QMainWindow):
             self.message_input.setPlaceholderText("DeepSeek'e mesaj yazın...")
 
     def append_message(self, sender, message):
+        """Sohbet ekranına mesaj ekler"""
         try:
             cursor = self.chat_display.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)
 
             if sender == "user":
                 prefix = "Siz:"
-                color = "#4ec9b0"
-                bg_color = "#1e1e1e" if self.current_theme == "dark" else "#f0f4f9"
+                msg_class = "user-message"
             else:
                 prefix = "DeepSeek:"
-                color = "#d69a66"
-                bg_color = "#2a2a2a" if self.current_theme == "dark" else "#ffffff"
+                msg_class = "assistant-message"
 
-            weight = "bold" if self.label_bold else "normal"
-            style_italic = "italic" if self.italic_subtitles else "normal"
-
-            html_content = f"""
-            <div style='margin-bottom:20px; padding:10px; background-color:{bg_color}; border-radius:8px;'>
-                <span style='font-weight:{weight}; color:{color}; font-style:{style_italic};'>{prefix}</span>
-                <div style='margin-top:5px; line-height:1.6; font-family:{self.font_family}; font-size:{self.font_size}px;'>
-                    {message}
-                </div>
-            </div>
-            """
+            html_content = (
+                f"<div class='chat-message {msg_class}'>"
+                f"<span class='sender'>{prefix}</span>"
+                f"<div class='message-text'>{message}</div>"
+                "</div>"
+            )
 
             self.chat_display.insertHtml(html_content)
             self.chat_display.ensureCursorVisible()
