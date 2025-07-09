@@ -16,7 +16,7 @@ class LoginWindow(QMainWindow):
     def __init__(self):
         """Giriş penceresini oluşturur"""
         super().__init__()
-        self.user_manager = user_manager
+        self.user_manager = user_managerrr
         self.setWindowTitle("🔐 DeepSeek Chat - Giriş")
         self.setFixedSize(450, 400)
         
