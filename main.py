@@ -438,9 +438,9 @@ class MainApplication(QMainWindow):
         send_panel = QWidget()
         send_layout = QVBoxLayout(send_panel)
         
+        self.right_panel.addWidget(self.context_tabs)
         self.right_panel.addWidget(send_panel)
         self.right_panel.setSizes([600, 200])
-        self.right_panel.addWidget(self.context_tabs)
         
         # Mesaj Girişi
         self.message_input = QTextEdit()
@@ -1694,9 +1694,6 @@ class MainApplication(QMainWindow):
     def append_message(self, sender, message):
         """Sohbet ekranına mesaj ekler"""
         try:
-            cursor = self.chat_display.textCursor()
-            cursor.movePosition(QTextCursor.MoveOperation.End)
-
             if sender == "user":
                 prefix = "Siz:"
                 msg_class = "user-message"
@@ -1706,12 +1703,12 @@ class MainApplication(QMainWindow):
 
             html_content = (
                 f"<div class='chat-message {msg_class}'>"
-                f"<span class='sender'>{prefix}</span>"
+                f"<span class='sender'>{prefix}</span><br>"
                 f"<div class='message-text'>{message}</div>"
                 "</div>"
             )
 
-            self.chat_display.insertHtml(html_content)
+            self.chat_display.append(html_content)
             self.chat_display.ensureCursorVisible()
         except Exception as e:
             logger.error(f"Mesaj eklenirken hata: {str(e)}")
@@ -1784,6 +1781,12 @@ class MainApplication(QMainWindow):
                 "message": reply,
                 "timestamp": QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate),
             })
+
+    def handle_api_error(self, error, model_name):
+        """API hatası durumunda kullanıcıyı bilgilendir"""
+        logger.error(f"API error: {error}")
+        self.statusBar().showMessage(error, 5000)
+        self.simulate_response(model_name)
             
     def handle_exception(self, exc_type, exc_value, exc_traceback):
         """Özel hata yöneticisi"""
