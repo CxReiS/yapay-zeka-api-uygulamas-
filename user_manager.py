@@ -8,11 +8,13 @@ logger = logging.getLogger('DeepSeekChat.user_manager')
 
 class UserManager:
     def __init__(self):
+        """Kullanıcı verilerini yönetir"""
         self.users_file = "users.json"
         self.users = self.load_users()
         logger.info("Kullanıcı yöneticisi başlatıldı")
     
     def load_users(self):
+        """Kullanıcı dosyasını yükler"""
         if os.path.exists(self.users_file):
             try:
                 with open(self.users_file, 'r', encoding='utf-8') as f:
@@ -23,6 +25,7 @@ class UserManager:
         return {}
     
     def save_users(self):
+        """Kullanıcı verilerini dosyaya kaydeder"""
         try:
             with open(self.users_file, 'w', encoding='utf-8') as f:
                 json.dump(self.users, f, indent=2, ensure_ascii=False)
@@ -31,6 +34,7 @@ class UserManager:
             logger.error(f"Kullanıcı verileri kaydedilirken hata: {str(e)}")
     
     def register_user(self, email, password):
+        """Yeni kullanıcı kaydeder"""
         if email in self.users:
             logger.warning(f"Kullanıcı zaten kayıtlı: {email}")
             return False, "Bu e-posta adresi zaten kayıtlı"
@@ -66,6 +70,7 @@ class UserManager:
         return True, "Kayıt başarılı"
     
     def authenticate(self, email, password):
+        """Kullanıcı girişini doğrular"""
         if email not in self.users:
             logger.warning(f"Kullanıcı bulunamadı: {email}")
             return False, "Kullanıcı bulunamadı"
@@ -80,9 +85,11 @@ class UserManager:
         return False, "Geçersiz şifre"
     
     def get_user(self, email):
+        """Belirli kullanıcıyı döndür"""
         return self.users.get(email, None)
     
     def update_user(self, email, data):
+        """Kullanıcı verilerini günceller"""
         if email in self.users:
             self.users[email].update(data)
             self.save_users()
@@ -91,6 +98,7 @@ class UserManager:
         return False
     
     def add_chat_to_project(self, email, project_id, chat_id):
+        """Projeye sohbet ID'si ekler"""
         if email in self.users and project_id in self.users[email]['projects']:
             if chat_id not in self.users[email]['projects'][project_id]['chats']:
                 self.users[email]['projects'][project_id]['chats'].append(chat_id)
