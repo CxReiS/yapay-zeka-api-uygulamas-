@@ -1,4 +1,20 @@
 /* Tüm temalar için ortak stiller */
+
+/* Sohbet mesajı kutusu */
+.chat-message {
+    margin-bottom: 20px;
+    padding: 10px;
+    border-radius: 8px;
+    line-height: 1.6;
+}
+
+.chat-message .sender {
+    font-weight: bold;
+}
+
+.chat-message .message-text {
+    margin-top: 5px;
+}
 QPushButton:checked {
     background-color: #4a76cd;
     color: white;
