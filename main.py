@@ -591,29 +591,8 @@ class MainApplication(QMainWindow):
             ))
             buttons.rejected.connect(dialog.reject)
             layout.addWidget(buttons)
-            
+
             dialog.setLayout(layout)
-
-            # Varsayılan modelleri ekle
-            self.model_combo_dialog.clear()
-            for mid in self.model_mapping.values():
-                self.model_combo_dialog.addItem(mid)
-            for mid in self.custom_models:
-                if self.model_combo_dialog.findText(mid) == -1:
-                    self.model_combo_dialog.addItem(mid)
-
-            # Kayıtlı model ID'sini seçili yap
-            if self.model_id:
-                if self.model_combo_dialog.findText(self.model_id) == -1:
-                    self.model_combo_dialog.addItem(self.model_id)
-                idx = self.model_combo_dialog.findText(self.model_id)
-                if idx >= 0:
-                    self.model_combo_dialog.setCurrentIndex(idx)
-
-            # Otomatik olarak modelleri çağırmayı dene
-            if self.api_key:
-                QTimer.singleShot(100, self.fetch_models)
-
             dialog.exec()
         except Exception as e:
             logger.error(f"Kısayol ayarları açılırken hata: {str(e)}")
@@ -701,14 +680,17 @@ class MainApplication(QMainWindow):
             key_link.setOpenExternalLinks(True)
             layout.addWidget(key_link)
 
+            # Gizlilik filtresi
+            privacy_layout = QHBoxLayout()
+            self.no_logging_toggle = QCheckBox("Sadece kayıt tutmayan modeller")
+            privacy_layout.addWidget(self.no_logging_toggle)
+            layout.addLayout(privacy_layout)
+
             # Model listesi
             model_id_layout = QHBoxLayout()
             model_id_layout.addWidget(QLabel("🆔 Model ID:"))
             self.model_combo_dialog = QComboBox()
             self.model_combo_dialog.setEditable(False)
-            if self.model_id:
-                self.model_combo_dialog.addItem(self.model_id)
-                self.model_combo_dialog.setCurrentText(self.model_id)
             model_id_layout.addWidget(self.model_combo_dialog, 1)
             layout.addLayout(model_id_layout)
 
@@ -766,6 +748,14 @@ class MainApplication(QMainWindow):
             layout.addLayout(btn_layout)
 
             dialog.setLayout(layout)
+
+            # Başlangıçta yerleşik modelleri göster
+            self.populate_model_list()
+
+            # Otomatik olarak modelleri çağır
+            if self.api_key:
+                QTimer.singleShot(100, self.fetch_models)
+
             dialog.exec()
         except Exception as e:
             logger.error(f"Model yönetimi açılırken hata: {str(e)}")
@@ -817,31 +807,33 @@ class MainApplication(QMainWindow):
             response = requests.get(url, headers=headers, timeout=30)
             if response.status_code == 200:
                 models = response.json().get("data", [])
-                if models:
-                    self.model_combo_dialog.clear()
-                    for m in models:
-                        if isinstance(m, dict) and "id" in m:
-                            self.model_combo_dialog.addItem(m["id"])
-                    if self.model_id:
-                        idx = self.model_combo_dialog.findText(self.model_id)
-                        if idx >= 0:
-                            self.model_combo_dialog.setCurrentIndex(idx)
+                filtered = []
+                for m in models:
+                    if isinstance(m, dict) and "id" in m:
+                        if self.no_logging_toggle.isChecked() and m.get("privacy", {}).get("prompt_logging", True):
+                            continue
+                        filtered.append(m["id"])
+                if filtered:
+                    self.populate_model_list(filtered)
                     self.statusBar().showMessage("✅ Modeller yüklendi", 3000)
-                    return
-            raise Exception("Model listesi alınamadı")
+                else:
+                    QMessageBox.information(self, "Bilgi", "Uygun model bulunamadı. Gizlilik ayarlarınızı kontrol edin.")
+                return
+            else:
+                if response.status_code == 429:
+                    msg = "Günlük kullanım sınırına ulaşıldı"
+                elif response.status_code in (503, 504):
+                    msg = "Model şu an geçici olarak kullanılamıyor"
+                elif response.status_code == 404:
+                    msg = "Model listesi bulunamadı (404)"
+                else:
+                    msg = f"API hatası: {response.status_code}"
+                QMessageBox.warning(self, "Hata", msg)
+                logger.error(msg)
         except Exception as e:
             logger.error(f"Modeller alınırken hata: {str(e)}")
             QMessageBox.warning(self, "Hata", "Modeller alınamadı, varsayılanlar gösteriliyor")
-            self.model_combo_dialog.clear()
-            for mid in self.model_mapping.values():
-                self.model_combo_dialog.addItem(mid)
-            for mid in self.custom_models:
-                if self.model_combo_dialog.findText(mid) == -1:
-                    self.model_combo_dialog.addItem(mid)
-            if self.model_id:
-                idx = self.model_combo_dialog.findText(self.model_id)
-                if idx >= 0:
-                    self.model_combo_dialog.setCurrentIndex(idx)
+            self.populate_model_list()
 
     def setup_shortcuts(self):
         
@@ -1676,6 +1668,26 @@ class MainApplication(QMainWindow):
                 json.dump(self.custom_models, f, indent=2)
         except Exception as e:
             logger.error(f"Özel modeller kaydedilirken hata: {str(e)}")
+
+    def populate_model_list(self, models=None):
+        """Model açılır kutusunu verilen listeyle doldurur"""
+        self.model_combo_dialog.clear()
+        items = []
+        if models is None:
+            items.extend(self.model_mapping.values())
+            for mid in self.custom_models:
+                if mid not in items:
+                    items.append(mid)
+        else:
+            items = models
+
+        for mid in items:
+            self.model_combo_dialog.addItem(mid)
+
+        if self.model_id:
+            idx = self.model_combo_dialog.findText(self.model_id)
+            if idx >= 0:
+                self.model_combo_dialog.setCurrentIndex(idx)
     
     def get_response_from_openrouter(self, model_name):
         """OpenRouter API'sinden yanıt al"""
@@ -1898,7 +1910,17 @@ class MainApplication(QMainWindow):
     def handle_api_error(self, error, model_name):
         """API hatası durumunda kullanıcıyı bilgilendir"""
         logger.error(f"API error: {error}")
-        self.statusBar().showMessage(error, 5000)
+        msg = str(error)
+        if "429" in msg:
+            user_msg = "Günlük kullanım sınırına ulaşıldı"
+        elif "503" in msg or "504" in msg:
+            user_msg = "Model şu an geçici olarak kullanılamıyor"
+        elif "404" in msg:
+            user_msg = "Model bulunamadı (404)"
+        else:
+            user_msg = msg
+        self.statusBar().showMessage(user_msg, 5000)
+        QMessageBox.warning(self, "API Hatası", user_msg)
         self.simulate_response(model_name)
             
     def handle_exception(self, exc_type, exc_value, exc_traceback):
