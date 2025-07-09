@@ -590,6 +590,24 @@ class MainApplication(QMainWindow):
             layout.addWidget(buttons)
             
             dialog.setLayout(layout)
+
+            # Varsayılan modelleri ekle
+            self.model_combo_dialog.clear()
+            for mid in self.model_mapping.values():
+                self.model_combo_dialog.addItem(mid)
+
+            # Kayıtlı model ID'sini seçili yap
+            if self.model_id:
+                if self.model_combo_dialog.findText(self.model_id) == -1:
+                    self.model_combo_dialog.addItem(self.model_id)
+                idx = self.model_combo_dialog.findText(self.model_id)
+                if idx >= 0:
+                    self.model_combo_dialog.setCurrentIndex(idx)
+
+            # Otomatik olarak modelleri çağırmayı dene
+            if self.api_key:
+                QTimer.singleShot(100, self.fetch_models)
+
             dialog.exec()
         except Exception as e:
             logger.error(f"Kısayol ayarları açılırken hata: {str(e)}")
@@ -759,19 +777,28 @@ class MainApplication(QMainWindow):
             response = requests.get(url, headers=headers, timeout=30)
             if response.status_code == 200:
                 models = response.json().get("data", [])
-                self.model_combo_dialog.clear()
-                for m in models:
-                    if isinstance(m, dict) and "id" in m:
-                        self.model_combo_dialog.addItem(m["id"])
-                if self.model_id:
-                    idx = self.model_combo_dialog.findText(self.model_id)
-                    if idx >= 0:
-                        self.model_combo_dialog.setCurrentIndex(idx)
-            else:
-                QMessageBox.warning(self, "Hata", "Model listesi alınamadı")
+                if models:
+                    self.model_combo_dialog.clear()
+                    for m in models:
+                        if isinstance(m, dict) and "id" in m:
+                            self.model_combo_dialog.addItem(m["id"])
+                    if self.model_id:
+                        idx = self.model_combo_dialog.findText(self.model_id)
+                        if idx >= 0:
+                            self.model_combo_dialog.setCurrentIndex(idx)
+                    self.statusBar().showMessage("✅ Modeller yüklendi", 3000)
+                    return
+            raise Exception("Model listesi alınamadı")
         except Exception as e:
             logger.error(f"Modeller alınırken hata: {str(e)}")
-            QMessageBox.warning(self, "Hata", str(e))
+            QMessageBox.warning(self, "Hata", "Modeller alınamadı, varsayılanlar gösteriliyor")
+            self.model_combo_dialog.clear()
+            for mid in self.model_mapping.values():
+                self.model_combo_dialog.addItem(mid)
+            if self.model_id:
+                idx = self.model_combo_dialog.findText(self.model_id)
+                if idx >= 0:
+                    self.model_combo_dialog.setCurrentIndex(idx)
 
     def setup_shortcuts(self):
         
