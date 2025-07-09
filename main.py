@@ -683,6 +683,7 @@ class MainApplication(QMainWindow):
             # Gizlilik filtresi
             privacy_layout = QHBoxLayout()
             self.no_logging_toggle = QCheckBox("Sadece kayıt tutmayan modeller")
+            self.no_logging_toggle.setEnabled(True)
             privacy_layout.addWidget(self.no_logging_toggle)
             layout.addLayout(privacy_layout)
 
@@ -767,6 +768,9 @@ class MainApplication(QMainWindow):
             model_id = self.model_combo_dialog.currentText().strip()
             self.save_api_key(api_key, model_id)
             self.save_custom_models()
+            if self.model_combo.findText(model_id) == -1:
+                self.model_combo.addItem(model_id)
+            self.model_combo.setCurrentText(model_id)
             if hasattr(self, "model_dialog"):
                 self.model_dialog.accept()
         except Exception as e:
@@ -798,6 +802,7 @@ class MainApplication(QMainWindow):
             if not api_key:
                 QMessageBox.warning(self, "Uyarı", "Önce API anahtarını girin")
                 return
+            previous = self.model_combo_dialog.currentText()
             url = f"{self.api_base_url}/models"
             headers = {
                 "Authorization": f"Bearer {api_key}",
@@ -815,6 +820,8 @@ class MainApplication(QMainWindow):
                         filtered.append(m["id"])
                 if filtered:
                     self.populate_model_list(filtered)
+                    if previous in filtered:
+                        self.model_combo_dialog.setCurrentText(previous)
                     self.statusBar().showMessage("✅ Modeller yüklendi", 3000)
                 else:
                     QMessageBox.information(self, "Bilgi", "Uygun model bulunamadı. Gizlilik ayarlarınızı kontrol edin.")
@@ -1585,6 +1592,46 @@ class MainApplication(QMainWindow):
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Sohbetleri Dışa Aktar", default_name, "JSON Dosyaları (*.json)"
         )
+
+    def export_selected_chat(self):
+        """Seçili sohbeti JSON dosyasına kaydet"""
+        try:
+            item = self.chat_list.currentItem()
+            if not item:
+                QMessageBox.warning(self, "Uyarı", "Lütfen bir sohbet seçin")
+                return
+            chat_id = item.data(Qt.ItemDataRole.UserRole)
+            if chat_id not in self.chat_data:
+                return
+            default_name = create_safe_filename(self.chat_data[chat_id]["title"])
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Sohbeti Dışa Aktar", default_name, "JSON Dosyaları (*.json)"
+            )
+            if file_path:
+                with open(file_path, "w", encoding="utf-8") as f:
+                    json.dump(self.chat_data[chat_id], f, indent=2, ensure_ascii=False)
+                self.statusBar().showMessage("✅ Sohbet dışa aktarıldı", 3000)
+        except Exception as e:
+            logger.error(f"Sohbet dışa aktarılırken hata: {str(e)}")
+
+    def delete_selected_chat(self):
+        """Seçili sohbeti sil"""
+        try:
+            item = self.chat_list.currentItem()
+            if not item:
+                return
+            chat_id = item.data(Qt.ItemDataRole.UserRole)
+            row = self.chat_list.row(item)
+            self.chat_list.takeItem(row)
+            if chat_id in self.chat_data:
+                del self.chat_data[chat_id]
+            if self.active_chat_id == chat_id:
+                self.active_chat_id = None
+                self.chat_display.setHtml("<center><i>Merhaba, size nasıl yardımcı olabilirim?</i></center>")
+            self.statusBar().showMessage("🗑️ Sohbet silindi", 3000)
+            self.save_app_state()
+        except Exception as e:
+            logger.error(f"Sohbet silinirken hata: {str(e)}")
     
     def delete_project(self, item):
         """Projeyi sil"""
@@ -1657,6 +1704,10 @@ class MainApplication(QMainWindow):
                     self.custom_models = json.load(f)
                     for mid in self.custom_models:
                         self.model_mapping[mid] = mid
+                        if self.model_combo.findText(mid) == -1:
+                            self.model_combo.addItem(mid)
+            if self.model_id and self.model_combo.findText(self.model_id) >= 0:
+                self.model_combo.setCurrentText(self.model_id)
         except Exception as e:
             logger.error(f"Özel modeller yüklenirken hata: {str(e)}")
             self.custom_models = []
@@ -1707,7 +1758,7 @@ class MainApplication(QMainWindow):
                 messages.append({"role": role, "content": msg["message"]})
             
             # OpenRouter model ID'sini al
-            openrouter_model = self.model_id or self.model_mapping.get(model_name, "deepseek/deepseek-r1:free")
+            openrouter_model = self.model_id or self.model_mapping.get(model_name, model_name)
             data = {
                 "model": openrouter_model,
                 "messages": messages,
@@ -1786,7 +1837,7 @@ class MainApplication(QMainWindow):
                 for msg in self.chat_data[self.active_chat_id]["messages"]:
                     role = "user" if msg["sender"] == "user" else "assistant"
                     history.append({"role": role, "content": msg["message"]})
-                target_model = self.model_id or self.model_mapping.get(model_name, "deepseek/deepseek-r1:free")
+                target_model = self.model_id or self.model_mapping.get(model_name, model_name)
                 self.worker = WorkerThread(self.api_key, history, target_model)
                 self.worker.thinking_updated.connect(self.handle_thinking_update)
                 self.worker.response_received.connect(lambda reply, _: self.handle_api_response(reply, model_name))
