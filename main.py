@@ -20,7 +20,6 @@ from PyQt6.QtGui import (
     QAction, QIcon, QKeySequence, QTextCursor, QColor, QTextCharFormat, QFont, QPixmap, QFontMetrics
 )
 
-from login_window import LoginWindow
 from user_manager import UserManager
 from worker_thread import WorkerThread
 from project_view import ProjectView
@@ -1783,8 +1782,10 @@ if __name__ == "__main__":
         window = None
         
         user_manager = UserManager()
-        
-         # Giriş bilgilerini kontrol et
+
+        from login_window import LoginWindow
+
+        # Giriş bilgilerini kontrol et
         if os.path.exists("user_prefs.json"):
             with open("user_prefs.json", "r") as f:
                 prefs = json.load(f)
