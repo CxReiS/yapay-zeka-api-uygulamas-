@@ -10,30 +10,37 @@ class WorkerThread(QThread):
     error_occurred = pyqtSignal(str)
     thinking_updated = pyqtSignal(str)  # Thinking messages signal
 
-    def __init__(self, api_key, conversation_history, model="deepseek/deepseek-r1:free"):
+    def __init__(self, api_key, conversation_history, model="gemma:2b", endpoint="http://localhost:11434/api/chat"):
         """Arka planda API isteği yapan iş parçacığı"""
         super().__init__()
         self.api_key = api_key
         self.conversation_history = conversation_history
         self.model = model
-        self.endpoint = "https://openrouter.ai/api/v1/chat/completions"
+        self.endpoint = endpoint
 
     def run(self):
         """API isteğini çalıştır ve sonuçları sinyallerle döndür"""
         try:
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/CxReiS/DeepSeekChat",
-                "X-Title": "DeepSeek Chat",
-            }
-
-            payload = {
-                "model": self.model,
-                "messages": self.conversation_history,
-                "temperature": 0.7,
-                "max_tokens": 4096,
-            }
+            headers = {}
+            payload = {}
+            if "openrouter.ai" in self.endpoint:
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com/CxReiS/DeepSeekChat",
+                    "X-Title": "DeepSeek Chat",
+                }
+                payload = {
+                    "model": self.model,
+                    "messages": self.conversation_history,
+                    "temperature": 0.7,
+                    "max_tokens": 4096,
+                }
+            else:
+                payload = {
+                    "model": self.model,
+                    "messages": self.conversation_history,
+                }
             
             start_time = time.time()
 
@@ -49,14 +56,21 @@ class WorkerThread(QThread):
 
             response = requests.post(self.endpoint, json=payload, headers=headers, timeout=120)
             response_time = time.time() - start_time
-                     
+
             if response.status_code == 200:
                 response_data = response.json()
-                if 'choices' in response_data and len(response_data['choices']) > 0:
-                    assistant_message = response_data['choices'][0]['message']['content']
-                    self.response_received.emit(assistant_message, response_time)
+                if "openrouter.ai" in self.endpoint:
+                    if 'choices' in response_data and response_data['choices']:
+                        assistant_message = response_data['choices'][0]['message']['content']
+                        self.response_received.emit(assistant_message, response_time)
+                    else:
+                        self.error_occurred.emit("API yanıtı geçersiz: choices bulunamadı")
                 else:
-                    self.error_occurred.emit("API yanıtı geçersiz: choices bulunamadı")
+                    msg = response_data.get('message', {}).get('content')
+                    if msg:
+                        self.response_received.emit(msg, response_time)
+                    else:
+                        self.error_occurred.emit("API yanıtı geçersiz")
             else:
                 error_msg = f"API hatası ({response.status_code}): {response.text}"
                 self.error_occurred.emit(error_msg)
