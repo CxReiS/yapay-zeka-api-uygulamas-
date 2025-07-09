@@ -153,3 +153,14 @@ QPushButton#btn_theme_green:hover {
 QPushButton#btn_theme_purple:hover {
     background-color: #a25df0;
 }
+
+/* Sohbet mesajları */
+.chat-message.user-message {
+    background-color: #302049;
+    color: #4ec9b0;
+}
+
+.chat-message.assistant-message {
+    background-color: #473068;
+    color: #d69a66;
+}
