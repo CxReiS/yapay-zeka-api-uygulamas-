@@ -13,7 +13,8 @@ from user_manager import UserManager
 logger = logging.getLogger('DeepSeekChat.login_window')
 
 class LoginWindow(QMainWindow):
-    def __init__(self, user_manager: UserManager):
+    def __init__(self):
+        """Giriş penceresini oluşturur"""
         super().__init__()
         self.user_manager = user_manager
         self.setWindowTitle("🔐 DeepSeek Chat - Giriş")
