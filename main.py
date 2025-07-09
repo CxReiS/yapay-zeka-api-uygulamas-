@@ -50,7 +50,7 @@ class MainApplication(QMainWindow):
         self.local_model_mapping = {"Ollama (local)": "gemma:2b"}
         self.remote_model_mapping = {}
         self.model_mapping = {}
-        # Kullanıcı tanımlı modeller (setup_sidebar öncesinde mevcut olmalı)
+        # Kullanıcı tanımlı modeller listesi (setup_sidebar'dan önce tanımlanmalı)
         self.custom_models = []
 
         self.projeler = []
