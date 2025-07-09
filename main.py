@@ -1642,24 +1642,23 @@ class MainApplication(QMainWindow):
             response = requests.post(url, headers=headers, json=data, timeout=120)
             response_data = response.json()
             if response.status_code == 200:
-                assistant_reply = response_data["choices"][0]["message"]["content"]
-                
-                # Yanıtı ekrana ve hafızaya ekle
-                self.append_message("assistant", assistant_reply)
-                self.chat_data[self.active_chat_id]["messages"].append({
-                    "sender": "assistant",
-                    "message": assistant_reply,
-                    "timestamp": QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate)
-                })
-                self.statusBar().showMessage(f"✅ Yanıt alındı ({model_name})", 3000)
-                self.save_app_state()
+                if "choices" in response_data and response_data["choices"]:
+                    assistant_reply = response_data["choices"][0]["message"]["content"]
+
+                    # Yanıtı ekrana ve hafızaya ekle
+                    self.append_message("assistant", assistant_reply)
+                    self.chat_data[self.active_chat_id]["messages"].append({
+                        "sender": "assistant",
+                        "message": assistant_reply,
+                        "timestamp": QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate),
+                    })
+                    self.statusBar().showMessage(f"✅ Yanıt alındı ({model_name})", 3000)
+                    self.save_app_state()
+                else:
+                    self.handle_api_error("API yanıtı geçersiz: choices bulunamadı", model_name)
             else:
                 error_msg = response_data.get("error", {}).get("message", "Bilinmeyen hata")
-                self.statusBar().showMessage(f"❌ Hata: {error_msg}", 5000)
-                logger.error(f"API hatası: {response.status_code} - {error_msg}")
-                
-                # Hata durumunda simülasyon yap
-                QTimer.singleShot(1500, lambda: self.simulate_response(model_name))
+                self.handle_api_error(f"API hatası: {response.status_code} - {error_msg}", model_name)
         
         except Exception as e:
             logger.error(f"API isteği sırasında hata: {str(e)}")
