@@ -161,3 +161,8 @@ QPushButton#btn_theme_green:hover {
 QPushButton#btn_theme_purple:hover {
     background-color: #a25df0;
 }
+
+.chat-message.assistant-message {
+    background-color: #213d5b;
+    color: #d69a66;
+}
