@@ -124,6 +124,7 @@ class MainApplication(QMainWindow):
         # Aktif sohbet ID'si
         self.active_chat_id = None
         self.api_key = None
+        self.model_id = None
         self.api_base_url = "https://openrouter.ai/api/v1"
         self.load_api_key()
         
@@ -677,14 +678,15 @@ class MainApplication(QMainWindow):
             key_link.setOpenExternalLinks(True)
             layout.addWidget(key_link)
 
-            # Model Seçimi
-            model_layout = QHBoxLayout()
-            model_layout.addWidget(QLabel("🤖 Aktif Model:"))
-            self.model_combo_dialog = QComboBox()
-            self.model_combo_dialog.addItems(["deepseek-chat", "deepseek-coder", "deepseek-math"])
-            self.model_combo_dialog.setCurrentText(self.model_combo.currentText())
-            model_layout.addWidget(self.model_combo_dialog, 1)
-            layout.addLayout(model_layout)
+            # Model ID
+            model_id_layout = QHBoxLayout()
+            model_id_layout.addWidget(QLabel("🆔 Model ID:"))
+            self.model_id_edit = QLineEdit()
+            self.model_id_edit.setPlaceholderText("deepseek/deepseek-r1:free")
+            if self.model_id:
+                self.model_id_edit.setText(self.model_id)
+            model_id_layout.addWidget(self.model_id_edit, 1)
+            layout.addLayout(model_id_layout)
 
             # Model Bilgileri
             info_box = QGroupBox("ℹ️ DeepSeek R1 Model Bilgileri")
@@ -729,7 +731,18 @@ class MainApplication(QMainWindow):
             dialog.setLayout(layout)
             dialog.exec()
         except Exception as e:
-            logger.error(f"Model yönetimi açılırken hata: {str(e)}") 
+            logger.error(f"Model yönetimi açılırken hata: {str(e)}")
+
+    def save_model_settings(self):
+        """Model ayarlarını kaydet"""
+        try:
+            api_key = self.api_key_edit.text().strip()
+            model_id = self.model_id_edit.text().strip()
+            self.save_api_key(api_key, model_id)
+            if hasattr(self, "model_dialog"):
+                self.model_dialog.accept()
+        except Exception as e:
+            logger.error(f"Model ayarları kaydedilirken hata: {str(e)}")
 
     def setup_shortcuts(self):
         
@@ -1507,22 +1520,24 @@ class MainApplication(QMainWindow):
         QApplication.quit()
     
     def load_api_key(self):
-        """Kayıtlı API anahtarını yükle"""
+        """Kayıtlı API anahtarını ve model ID'sini yükle"""
         try:
             if os.path.exists("api_config.json"):
                 with open("api_config.json", "r") as f:
                     config = json.load(f)
                     self.api_key = config.get("api_key")
-        
+                    self.model_id = config.get("model_id")
+
         except Exception as e:
             logger.error(f"API anahtarı yüklenirken hata: {str(e)}")
-    
-    def save_api_key(self, api_key):
-        """API anahtarını kaydet"""
+
+    def save_api_key(self, api_key, model_id=None):
+        """API anahtarını ve model ID'sini kaydet"""
         try:
             with open("api_config.json", "w") as f:
-                json.dump({"api_key": api_key}, f)
+                json.dump({"api_key": api_key, "model_id": model_id}, f)
             self.api_key = api_key
+            self.model_id = model_id
             self.statusBar().showMessage("🔑 API anahtarı kaydedildi", 3000)
         
         except Exception as e:
@@ -1546,7 +1561,7 @@ class MainApplication(QMainWindow):
                 messages.append({"role": role, "content": msg["message"]})
             
             # OpenRouter model ID'sini al
-            openrouter_model = self.model_mapping.get(model_name, "deepseek/deepseek-r1:free")
+            openrouter_model = self.model_id or self.model_mapping.get(model_name, "deepseek/deepseek-r1:free")
             data = {
                 "model": openrouter_model,
                 "messages": messages,
@@ -1629,7 +1644,8 @@ class MainApplication(QMainWindow):
                 for msg in self.chat_data[self.active_chat_id]["messages"]:
                     role = "user" if msg["sender"] == "user" else "assistant"
                     history.append({"role": role, "content": msg["message"]})
-                self.worker = WorkerThread(self.api_key, history, self.model_mapping.get(model_name, "deepseek/deepseek-r1:free"))
+                target_model = self.model_id or self.model_mapping.get(model_name, "deepseek/deepseek-r1:free")
+                self.worker = WorkerThread(self.api_key, history, target_model)
                 self.worker.response_received.connect(lambda reply, _: self.handle_api_response(reply, model_name))
                 self.worker.error_occurred.connect(lambda err: self.handle_api_error(err, model_name))
                 self.worker.start()
