@@ -50,7 +50,9 @@ class MainApplication(QMainWindow):
         self.local_model_mapping = {"Ollama (local)": "gemma:2b"}
         self.remote_model_mapping = {}
         self.model_mapping = {}
-        
+        # Kullanıcı tanımlı modeller (setup_sidebar öncesinde mevcut olmalı)
+        self.custom_models = []
+
         self.projeler = []
         self.proje_widgetleri = {}
 
@@ -125,7 +127,6 @@ class MainApplication(QMainWindow):
         self.model_id = None
         self.api_base_url = "https://openrouter.ai/api/v1"
         self.is_processing = False
-        self.custom_models = []
         self.load_api_key()
         self.load_custom_models()
         self.update_model_combo()
