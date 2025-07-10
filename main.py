@@ -32,15 +32,43 @@ from utils import validate_email, format_file_size, create_safe_filename
 
 # Log dosyasını yönet
 MAX_LOG_LINES = 1000
+LOG_META_FILE = "log_meta.json"
 
 def manage_log_file(max_lines: int = MAX_LOG_LINES):
-    """app.log dosyasını sınırlar"""
+    """app.log dosyasını sınırlar ve kapatma sayısına göre temizler"""
     try:
-        if os.path.exists("app.log"):
+        count = 0
+        if os.path.exists(LOG_META_FILE):
+            with open(LOG_META_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                count = data.get("close_count", 0)
+
+        if count >= 2:
+            if os.path.exists("app.log"):
+                os.remove("app.log")
+            count = 0
+        elif os.path.exists("app.log"):
             with open("app.log", "r", encoding="utf-8") as f:
                 line_count = sum(1 for _ in f)
             if line_count >= max_lines:
                 os.remove("app.log")
+                count = 0
+
+        with open(LOG_META_FILE, "w", encoding="utf-8") as f:
+            json.dump({"close_count": count}, f)
+    except Exception:
+        pass
+
+def increment_log_counter():
+    try:
+        count = 0
+        if os.path.exists(LOG_META_FILE):
+            with open(LOG_META_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                count = data.get("close_count", 0)
+        count += 1
+        with open(LOG_META_FILE, "w", encoding="utf-8") as f:
+            json.dump({"close_count": count}, f)
     except Exception:
         pass
 
@@ -1355,6 +1383,8 @@ class MainApplication(QMainWindow):
                     rename_action.triggered.connect(lambda: self.projects_tree.editItem(item, 0))
                     export_action = menu.addAction(QIcon("icons/export.png"), "Dışa Aktar")
                     export_action.triggered.connect(self.export_selected_chat)
+                    move_root_action = menu.addAction(QIcon("icons/move.png"), "Ana Listeye Taşı")
+                    move_root_action.triggered.connect(lambda: self.move_to_main_chat_list(item))
                     move_menu = menu.addMenu(QIcon("icons/move.png"), "Projeye Taşı")
                     for i in range(self.projects_tree.topLevelItemCount()):
                         project = self.projects_tree.topLevelItem(i)
@@ -1474,16 +1504,21 @@ class MainApplication(QMainWindow):
 
     def project_drop_event(self, event):
         item = self.projects_tree.itemAt(event.position().toPoint())
-        if item and not item.parent():
+        source = event.source()
+        if source == self.projects_tree:
+            chat_item = self.projects_tree.currentItem()
+        else:
             chat_item = self.chat_list.currentItem()
-            if chat_item:
+
+        if chat_item:
+            if item and not item.parent():
                 self.move_chat_to_project(item, chat_item)
                 event.acceptProposedAction()
-        elif not item:
-            chat_item = self.chat_list.currentItem()
-            if chat_item:
+            elif not item:
                 self.move_to_main_chat_list(chat_item)
                 event.acceptProposedAction()
+            else:
+                event.ignore()
         else:
             event.ignore()
     
@@ -1552,15 +1587,19 @@ class MainApplication(QMainWindow):
         """Sohbeti projeye taşır"""
         try:
             chat_id = chat_item.data(Qt.ItemDataRole.UserRole)
-            title = chat_item.text()
-            new_item = QTreeWidgetItem([f"💬 {title}"])
+            if isinstance(chat_item, QTreeWidgetItem):
+                title = chat_item.text(0)
+                if chat_item.parent():
+                    chat_item.parent().removeChild(chat_item)
+            else:
+                title = chat_item.text()
+                row = self.chat_list.row(chat_item)
+                self.chat_list.takeItem(row)
+            new_item = QTreeWidgetItem([f"💬 {title if not title.startswith('💬 ') else title[2:].strip()}"])
             new_item.setData(0, Qt.ItemDataRole.UserRole, chat_id)
             new_item.setFlags(new_item.flags() | Qt.ItemFlag.ItemIsEditable)
             project_item.addChild(new_item)
             project_item.setExpanded(True)
-
-            row = self.chat_list.row(chat_item)
-            self.chat_list.takeItem(row)
             self.save_app_state()
         except Exception as e:
             logger.error(f"Sohbet projeye taşınırken hata: {str(e)}")
@@ -1630,6 +1669,7 @@ class MainApplication(QMainWindow):
         """Pencere kapatılırken durumu kaydet"""
         try:
             self.save_app_state()
+            increment_log_counter()
         finally:
             event.accept()
     
