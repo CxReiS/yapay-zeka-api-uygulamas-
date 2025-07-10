@@ -24,7 +24,6 @@ from PyQt6.QtGui import (
 from login_window import LoginWindow
 from user_manager import UserManager
 from worker_thread import WorkerThread
-from project_view import ProjectView
 from utils.error_dialog import ErrorDialog
 from utils.font_manager import apply_font_settings
 
@@ -452,9 +451,6 @@ class MainApplication(QMainWindow):
         # Sekmeli alan
         self.context_tabs = QTabWidget()
         
-        # Proje Görünümü
-        self.project_view = ProjectView(self.current_project, self)
-        self.context_tabs.addTab(self.project_view, "📂 Proje")
               
         # Mesaj Görüntüleme
         chat_tab = QWidget()
@@ -468,8 +464,8 @@ class MainApplication(QMainWindow):
         self.context_tabs.addTab(chat_tab, "💬 Sohbet")
         
         # Proje Bağlamı Sekmesi
-        project_tab = QWidget()
-        project_layout = QVBoxLayout(project_tab)
+        self.project_tab = QWidget()
+        project_layout = QVBoxLayout(self.project_tab)
         self.project_instructions = QTextEdit()
         self.project_instructions.setPlaceholderText("Proje talimatları...")
         project_layout.addWidget(QLabel("📝 Talimatlar:"))
@@ -485,7 +481,8 @@ class MainApplication(QMainWindow):
         file_btn_layout.addWidget(self.add_project_file_btn)
         file_btn_layout.addWidget(self.remove_project_file_btn)
         project_layout.addLayout(file_btn_layout)
-        self.context_tabs.addTab(project_tab, "📂 Proje Bağlamı")
+        self.project_tab_index = self.context_tabs.addTab(self.project_tab, "📂 Proje Bağlamı")
+        self.context_tabs.setTabVisible(self.project_tab_index, False)
                 
         # Mesaj Gönderme Paneli
         send_panel = QWidget()
@@ -1010,9 +1007,6 @@ class MainApplication(QMainWindow):
                 project_id = project_item.data(0, Qt.ItemDataRole.UserRole)
                 self.current_project = self.get_project_by_id(project_id)
                 
-                # ProjectView'i güncelle
-                self.project_view.proje = self.current_project
-                self.project_view.refresh_view()
                 
                 chat_id = item.data(0, Qt.ItemDataRole.UserRole)
                 if not chat_id:
@@ -1069,24 +1063,22 @@ class MainApplication(QMainWindow):
             logger.error(f"Projeler yüklenirken hata: {str(e)}")
             
     def load_project(self, project_id):
-        """Seçilen projeyi yükler ve ProjectView arayüzünü günceller"""
+        """Seçilen projeyi yükler"""
         self.current_project = self.get_project_by_id(project_id)
 
         if not self.current_project:
             logger.warning(f"ID {project_id} ile proje bulunamadı.")
             return
 
-        # ProjectView'i güncelle
-        self.project_view.proje = self.current_project
-        self.project_view.refresh_view()
-
-        # Sekmeyi aktif hale getir
-        self.context_tabs.setCurrentWidget(self.project_view) 
 
     def load_project_context(self, current, previous):
         """Sol ağaçtaki proje seçildiğinde bağlam (talimat + dosya) verilerini yükler"""
         if not current or current.parent():
+            self.context_tabs.setTabVisible(self.project_tab_index, False)
             return  # Sadece üst düzey proje öğelerinde çalış
+
+        self.context_tabs.setTabVisible(self.project_tab_index, True)
+        self.context_tabs.setCurrentIndex(self.project_tab_index)
 
         pid = id(current)
 
@@ -1125,15 +1117,11 @@ class MainApplication(QMainWindow):
                     return
             
             # Yeni sohbet öğesi oluştur
-            chat_count = self.chat_list.count() + 1
-            chat_name = f"Yeni Sohbet {chat_count}"
             existing_names = {self.chat_list.item(i).text() for i in range(self.chat_list.count())}
-            if chat_name in existing_names:
-                suffix = 1
-                base = chat_name
-                while f"{base} ({suffix})" in existing_names:
-                    suffix += 1
-                chat_name = f"{base} ({suffix})"
+            index = 1
+            while f"Yeni Sohbet {index}" in existing_names:
+                index += 1
+            chat_name = f"Yeni Sohbet {index}"
             chat_id = str(uuid.uuid4())
             item = QListWidgetItem(chat_name)
             item.setData(Qt.ItemDataRole.UserRole, chat_id)
@@ -1299,7 +1287,8 @@ class MainApplication(QMainWindow):
         """Edit kutusunu genişletir"""
         for editor in self.findChildren(QLineEdit):
             if editor.objectName() != "chat_editor":
-                editor.setMinimumWidth(300)
+                width = max(self.chat_list.width(), self.projects_tree.width()) - 20
+                editor.setMinimumWidth(max(150, width))
                 editor.setObjectName("chat_editor")
                 editor.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                 editor.customContextMenuRequested.connect(lambda pos, e=editor: self.show_editor_context_menu(e, pos))
@@ -2030,7 +2019,10 @@ class MainApplication(QMainWindow):
 
     def handle_api_error(self, err, model_name):
         """API hatası olduğunda çağrılır"""
-        self.statusBar().showMessage(err, 5000)
+        message = err
+        if "Ağ hatası" in err or "Connection refused" in err:
+            message = "Model henüz yüklenmedi"
+        self.statusBar().showMessage(message, 5000)
         self.send_btn.setText(" Gönder")
         self.send_btn.setIcon(QIcon("icons/send_message.png"))
         self.message_input.setReadOnly(False)
@@ -2039,7 +2031,7 @@ class MainApplication(QMainWindow):
     def simulate_response(self, model_name):
         """API başarısız olduğunda basit bir yanıt simüle eder"""
         try:
-            reply = f"(Sim) {model_name} cevabı hazır değil."
+            reply = f"(Sim) {model_name} cevabı hazır değil. Model henüz yüklenmedi."
             self.handle_api_response(reply, model_name)
         except Exception as e:
             logger.error(f"Simülasyon yanıtı oluşturulurken hata: {str(e)}")
