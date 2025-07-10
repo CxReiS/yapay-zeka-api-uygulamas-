@@ -491,9 +491,9 @@ class MainApplication(QMainWindow):
         send_panel = QWidget()
         send_layout = QVBoxLayout(send_panel)
         
+        self.right_panel.addWidget(self.context_tabs)
         self.right_panel.addWidget(send_panel)
         self.right_panel.setSizes([600, 200])
-        self.right_panel.addWidget(self.context_tabs)
         
         # Mesaj Girişi
         self.message_input = QTextEdit()
@@ -1099,6 +1099,19 @@ class MainApplication(QMainWindow):
 
         for f in ctx["files"]:
             self.project_files_list.addItem(f)
+
+    def save_project_context(self):
+        """Seçili projenin bağlam bilgilerini kaydet"""
+        try:
+            item = self.projects_tree.currentItem()
+            if item and not item.parent():
+                pid = id(item)
+                self.project_context[pid] = {
+                    "instructions": self.project_instructions.toPlainText(),
+                    "files": [self.project_files_list.item(i).text() for i in range(self.project_files_list.count())],
+                }
+        except Exception as e:
+            logger.error(f"Proje bağlamı kaydedilirken hata: {str(e)}")
     
     def new_chat(self):
         try:
@@ -1114,6 +1127,13 @@ class MainApplication(QMainWindow):
             # Yeni sohbet öğesi oluştur
             chat_count = self.chat_list.count() + 1
             chat_name = f"Yeni Sohbet {chat_count}"
+            existing_names = {self.chat_list.item(i).text() for i in range(self.chat_list.count())}
+            if chat_name in existing_names:
+                suffix = 1
+                base = chat_name
+                while f"{base} ({suffix})" in existing_names:
+                    suffix += 1
+                chat_name = f"{base} ({suffix})"
             chat_id = str(uuid.uuid4())
             item = QListWidgetItem(chat_name)
             item.setData(Qt.ItemDataRole.UserRole, chat_id)
@@ -1227,6 +1247,12 @@ class MainApplication(QMainWindow):
             if not new_title:
                 new_title = self.chat_data[chat_id]["title"]
                 item.setText(new_title)
+            else:
+                existing = {self.chat_list.item(i).text() for i in range(self.chat_list.count()) if self.chat_list.item(i) != item}
+                if new_title in existing:
+                    QMessageBox.warning(self, "Uyarı", "Bu isimde bir sohbet zaten var")
+                    item.setText(self.chat_data[chat_id]["title"])
+                    return
             self.update_chat_title(chat_id, new_title)
 
     def handle_project_item_changed(self, item, column):
@@ -1236,6 +1262,12 @@ class MainApplication(QMainWindow):
             if not name:
                 name = item.toolTip(0) or "Proje"
                 item.setText(0, f"📂 {name}")
+            else:
+                existing = {self.projects_tree.topLevelItem(i).text(0).replace("📂 ", "") for i in range(self.projects_tree.topLevelItemCount()) if self.projects_tree.topLevelItem(i) != item}
+                if name in existing:
+                    QMessageBox.warning(self, "Uyarı", "Bu isimde bir proje zaten var")
+                    item.setText(0, item.toolTip(0) or "Proje")
+                    return
             max_width = self.projects_tree.width() - 20
             elided = self.font_metrics.elidedText(name, Qt.TextElideMode.ElideRight, max_width)
             item.setText(0, f"📂 {elided}")
@@ -1276,6 +1308,10 @@ class MainApplication(QMainWindow):
         try:
             project_name, ok = QInputDialog.getText(self, "Yeni Proje", "Proje Adı:")
             if ok and project_name:
+                names = {self.projects_tree.topLevelItem(i).text(0).replace("📂 ", "") for i in range(self.projects_tree.topLevelItemCount())}
+                if project_name in names:
+                    QMessageBox.warning(self, "Uyarı", "Bu isimde bir proje zaten var")
+                    return
                 project_id = str(uuid.uuid4())
                 self.projects_data.append({
                     "id": project_id,
@@ -1586,7 +1622,10 @@ class MainApplication(QMainWindow):
     def move_chat_to_project(self, project_item, chat_item):
         """Sohbeti projeye taşır"""
         try:
-            chat_id = chat_item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(chat_item, QTreeWidgetItem):
+                chat_id = chat_item.data(0, Qt.ItemDataRole.UserRole)
+            else:
+                chat_id = chat_item.data(Qt.ItemDataRole.UserRole)
             if isinstance(chat_item, QTreeWidgetItem):
                 title = chat_item.text(0)
                 if chat_item.parent():
@@ -1607,7 +1646,10 @@ class MainApplication(QMainWindow):
     def move_to_main_chat_list(self, chat_item):
         """Projeden ana sohbet listesine taşır"""
         try:
-            chat_id = chat_item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(chat_item, QTreeWidgetItem):
+                chat_id = chat_item.data(0, Qt.ItemDataRole.UserRole)
+            else:
+                chat_id = chat_item.data(Qt.ItemDataRole.UserRole)
             title = chat_item.text(0) if isinstance(chat_item, QTreeWidgetItem) else chat_item.text()
             if isinstance(chat_item, QTreeWidgetItem) and chat_item.parent():
                 chat_item.parent().removeChild(chat_item)
@@ -1625,6 +1667,35 @@ class MainApplication(QMainWindow):
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Sohbetleri Dışa Aktar", default_name, "JSON Dosyaları (*.json)"
         )
+        try:
+            if file_path:
+                with open(file_path, "w", encoding="utf-8") as f:
+                    json.dump(self.chat_data.get(self.active_chat_id, {}), f, indent=2, ensure_ascii=False)
+                self.statusBar().showMessage("💾 Sohbet dışa aktarıldı", 3000)
+        except Exception as e:
+            logger.error(f"Sohbet dışa aktarılırken hata: {str(e)}")
+
+    def export_selected_chat(self):
+        """Seçili sohbeti dışa aktar"""
+        try:
+            item = self.chat_list.currentItem()
+            if not item and self.projects_tree.currentItem():
+                tree_item = self.projects_tree.currentItem()
+                if tree_item.parent():
+                    item = tree_item
+            if not item:
+                return
+            chat_id = item.data(Qt.ItemDataRole.UserRole) if isinstance(item, QListWidgetItem) else item.data(0, Qt.ItemDataRole.UserRole)
+            if not chat_id:
+                return
+            default_name = create_safe_filename(self.chat_data[chat_id]["title"])
+            file_path, _ = QFileDialog.getSaveFileName(self, "Sohbeti Dışa Aktar", default_name, "JSON Dosyaları (*.json)")
+            if file_path:
+                with open(file_path, "w", encoding="utf-8") as f:
+                    json.dump(self.chat_data.get(chat_id, {}), f, indent=2, ensure_ascii=False)
+                self.statusBar().showMessage("💾 Sohbet dışa aktarıldı", 3000)
+        except Exception as e:
+            logger.error(f"Seçili sohbet dışa aktarılırken hata: {str(e)}")
     
     def delete_project(self, item):
         """Projeyi sil"""
@@ -1851,7 +1922,7 @@ class MainApplication(QMainWindow):
             cursor.movePosition(QTextCursor.MoveOperation.End)
 
             if sender == "user":
-                prefix = "Siz:"
+                prefix = "Siz: "
                 msg_class = "user-message"
                 spacer = ""
             else:
@@ -1964,6 +2035,14 @@ class MainApplication(QMainWindow):
         self.send_btn.setIcon(QIcon("icons/send_message.png"))
         self.message_input.setReadOnly(False)
         self.sending = False
+
+    def simulate_response(self, model_name):
+        """API başarısız olduğunda basit bir yanıt simüle eder"""
+        try:
+            reply = f"(Sim) {model_name} cevabı hazır değil."
+            self.handle_api_response(reply, model_name)
+        except Exception as e:
+            logger.error(f"Simülasyon yanıtı oluşturulurken hata: {str(e)}")
 
 if __name__ == "__main__":
     try:
