@@ -1,4 +1,8 @@
 QPushButton#web_search_btn {
+    background-color: #3a3a3a;
+    color: #ffffff;
+}
+QPushButton#web_search_btn:checked {
     background-color: #4a76cd;
     color: white;
 }
