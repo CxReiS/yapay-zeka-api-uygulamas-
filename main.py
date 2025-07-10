@@ -935,11 +935,12 @@ class MainApplication(QMainWindow):
         # Proje ağacı
         for i in range(self.projects_tree.topLevelItemCount()):
             project = self.projects_tree.topLevelItem(i)
-            project_visible = False
+            project_name = project.text(0).lower()
+            project_visible = text in project_name
             for j in range(project.childCount()):
                 chat_item = project.child(j)
                 chat_text = chat_item.text(0).lower()
-                if text in chat_text:
+                if text in chat_text or text in project_name:
                     project_visible = True
                     chat_item.setHidden(False)
                     # Eşleşme bulunduğunda projeyi genişlet
@@ -1194,13 +1195,19 @@ class MainApplication(QMainWindow):
         """Başlık değiştiğinde güncellemeleri yap"""
         chat_id = item.data(Qt.ItemDataRole.UserRole)
         if chat_id in self.chat_data:
-            new_title = item.text()
+            new_title = item.text().strip()
+            if not new_title:
+                new_title = self.chat_data[chat_id]["title"]
+                item.setText(new_title)
             self.update_chat_title(chat_id, new_title)
 
     def handle_project_item_changed(self, item, column):
         """Proje veya sohbet adı değiştiğinde hizala"""
         if not item.parent():
-            name = item.text(0).replace("📂 ", "")
+            name = item.text(0).replace("📂 ", "").strip()
+            if not name:
+                name = item.toolTip(0) or "Proje"
+                item.setText(0, f"📂 {name}")
             max_width = self.projects_tree.width() - 20
             elided = self.font_metrics.elidedText(name, Qt.TextElideMode.ElideRight, max_width)
             item.setText(0, f"📂 {elided}")
@@ -1208,7 +1215,10 @@ class MainApplication(QMainWindow):
         else:
             chat_id = item.data(0, Qt.ItemDataRole.UserRole)
             if chat_id in self.chat_data:
-                title = item.text(0).replace("💬 ", "")
+                title = item.text(0).replace("💬 ", "").strip()
+                if not title:
+                    title = self.chat_data[chat_id]["title"]
+                    item.setText(0, f"💬 {title}")
                 self.update_chat_title(chat_id, title)
 
     def autosave_chat(self, chat_id: str):
@@ -1248,6 +1258,7 @@ class MainApplication(QMainWindow):
                 })
                 # Yeni proje oluştur
                 new_project = QTreeWidgetItem([f"📂 {project_name}"])
+                new_project.setData(0, Qt.ItemDataRole.UserRole, project_id)
                 new_project.setFlags(new_project.flags() | Qt.ItemFlag.ItemIsEditable)
                 # Ağaca ekle
                 self.projects_tree.addTopLevelItem(new_project)
@@ -1749,9 +1760,9 @@ class MainApplication(QMainWindow):
             
             # API iş parçacığı
             self.worker = WorkerThread(
-                api_key="demo-key",
-                conversation_history=[{"role": msg['sender'], "content": msg['message']} for msg in self.chat_data[self.active_chat_id]["messages"]],
-                model=model_name
+                "demo-key",
+                [{"role": msg['sender'], "content": msg['message']} for msg in self.chat_data[self.active_chat_id]["messages"]],
+                model_name
             )
             self.worker.thinking_updated.connect(self.handle_thinking_update)
             self.worker.response_received.connect(lambda reply, t: self.handle_api_response(reply, model_name))
@@ -1810,7 +1821,7 @@ class MainApplication(QMainWindow):
 
             html_content = (
                 f"<div class='chat-message {msg_class}'>"
-                f"{spacer}<span class='sender'>{prefix}</span> "
+                f"{spacer}<span class='sender'>{prefix}</span>"
                 f"<span class='message-text'>{message}</span>"
                 "</div>"
             )
