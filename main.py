@@ -26,7 +26,26 @@ from worker_thread import WorkerThread
 from project_view import ProjectView
 from utils.error_dialog import ErrorDialog
 from utils.font_manager import apply_font_settings
+
 from utils import validate_email, format_file_size, create_safe_filename
+
+# Log dosyasını yönet
+MAX_LOG_LINES = 1000
+
+def manage_log_file(max_lines: int = MAX_LOG_LINES):
+    """app.log dosyasını sınırlar"""
+    try:
+        if os.path.exists("app.log"):
+            with open("app.log", "r", encoding="utf-8") as f:
+                line_count = sum(1 for _ in f)
+            if line_count >= max_lines:
+                os.remove("app.log")
+    except Exception:
+        pass
+
+manage_log_file()
+
+# Loglama sistemini başlat
 
 # Loglama sistemini başlat
 logging.basicConfig(
@@ -376,10 +395,13 @@ class MainApplication(QMainWindow):
         self.projects_tree.customContextMenuRequested.connect(self.show_project_context_menu)
         self.projects_tree.itemClicked.connect(self.load_project_chat)
         self.projects_tree.itemDoubleClicked.connect(self.edit_project_title)
+        self.projects_tree.itemChanged.connect(self.handle_project_item_changed)
         self.projects_tree.setAcceptDrops(True)
         self.projects_tree.viewport().setAcceptDrops(True)
         self.projects_tree.dragEnterEvent = self.project_drag_enter
         self.projects_tree.dropEvent = self.project_drop_event
+        self.projects_tree.setDragEnabled(True)
+        self.projects_tree.setDragDropMode(QTreeWidget.DragDropMode.InternalMove)
         self.projects_tree.currentItemChanged.connect(self.load_project_context)
         sidebar_layout.addWidget(self.projects_tree, 1)
         
@@ -1065,6 +1087,8 @@ class MainApplication(QMainWindow):
                 "title": chat_name,
                 "messages": []
             }
+
+            self.autosave_chat(chat_id)
             
             # Son eklenen öğeyi seç
             self.chat_list.setCurrentItem(item)
@@ -1161,7 +1185,35 @@ class MainApplication(QMainWindow):
         chat_id = item.data(Qt.ItemDataRole.UserRole)
         if chat_id in self.chat_data:
             new_title = item.text()
-            self.update_chat_title(chat_id, new_title)            
+            self.update_chat_title(chat_id, new_title)
+
+    def handle_project_item_changed(self, item, column):
+        """Proje veya sohbet adı değiştiğinde hizala"""
+        if not item.parent():
+            name = item.text(0).replace("📂 ", "")
+            max_width = self.projects_tree.width() - 20
+            elided = self.font_metrics.elidedText(name, Qt.TextElideMode.ElideRight, max_width)
+            item.setText(0, f"📂 {elided}")
+            item.setToolTip(name)
+        else:
+            chat_id = item.data(0, Qt.ItemDataRole.UserRole)
+            if chat_id in self.chat_data:
+                title = item.text(0).replace("💬 ", "")
+                self.update_chat_title(chat_id, title)
+
+    def autosave_chat(self, chat_id: str):
+        """Yeni sohbeti sohbet_xx.json formatında kaydeder"""
+        try:
+            index = 1
+            while True:
+                fname = f"sohbet_{index:02d}.json"
+                if not os.path.exists(fname):
+                    break
+                index += 1
+            with open(fname, "w", encoding="utf-8") as f:
+                json.dump(self.chat_data.get(chat_id, {}), f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Sohbet otomatik kaydedilirken hata: {str(e)}")
             
     def _expand_editor_widget(self):
         """Edit kutusunu genişletir"""
@@ -1265,6 +1317,8 @@ class MainApplication(QMainWindow):
                 if not item.parent():
                     delete_action = menu.addAction(QIcon("icons/delete.png"), "Projeyi Sil")
                     delete_action.triggered.connect(lambda: self.delete_project(item))
+                    rename_action = menu.addAction(QIcon("icons/rename.png"), "Yeniden Adlandır")
+                    rename_action.triggered.connect(lambda: self.projects_tree.editItem(item, 0))
                     add_chat_action = menu.addAction(QIcon("icons/add_chat.png"), "Sohbet Ekle")
                     add_chat_action.triggered.connect(lambda: self.add_chat_to_project(item))
                 
@@ -1457,9 +1511,42 @@ class MainApplication(QMainWindow):
             # Başlığı düzenlemek için aç
             self.projects_tree.editItem(new_chat, 0)
             self.save_app_state()
-        
+
         except Exception as e:
             logger.error(f"Projeye sohbet eklenirken hata: {str(e)}")
+
+    def move_chat_to_project(self, project_item, chat_item):
+        """Sohbeti projeye taşır"""
+        try:
+            chat_id = chat_item.data(Qt.ItemDataRole.UserRole)
+            title = chat_item.text()
+            new_item = QTreeWidgetItem([f"💬 {title}"])
+            new_item.setData(0, Qt.ItemDataRole.UserRole, chat_id)
+            new_item.setFlags(new_item.flags() | Qt.ItemFlag.ItemIsEditable)
+            project_item.addChild(new_item)
+            project_item.setExpanded(True)
+
+            row = self.chat_list.row(chat_item)
+            self.chat_list.takeItem(row)
+            self.save_app_state()
+        except Exception as e:
+            logger.error(f"Sohbet projeye taşınırken hata: {str(e)}")
+
+    def move_to_main_chat_list(self, chat_item):
+        """Projeden ana sohbet listesine taşır"""
+        try:
+            chat_id = chat_item.data(Qt.ItemDataRole.UserRole)
+            title = chat_item.text(0) if isinstance(chat_item, QTreeWidgetItem) else chat_item.text()
+            if isinstance(chat_item, QTreeWidgetItem) and chat_item.parent():
+                chat_item.parent().removeChild(chat_item)
+
+            new_item = QListWidgetItem(title if not title.startswith("💬 ") else title.replace("💬 ", ""))
+            new_item.setData(Qt.ItemDataRole.UserRole, chat_id)
+            new_item.setFlags(new_item.flags() | Qt.ItemFlag.ItemIsEditable)
+            self.chat_list.addItem(new_item)
+            self.save_app_state()
+        except Exception as e:
+            logger.error(f"Sohbet ana listeye taşınırken hata: {str(e)}")
             
     def export_chats(self):
         default_name = create_safe_filename(self.chat_data[self.active_chat_id]["title"])
@@ -1664,14 +1751,16 @@ class MainApplication(QMainWindow):
             if sender == "user":
                 prefix = "Siz:"
                 msg_class = "user-message"
+                spacer = ""
             else:
                 prefix = "DeepSeek:"
                 msg_class = "assistant-message"
+                spacer = "<br>"
 
             html_content = (
                 f"<div class='chat-message {msg_class}'>"
-                f"<span class='sender'>{prefix}</span>"
-                f"<div class='message-text'>{message}</div>"
+                f"{spacer}<span class='sender'>{prefix}</span> "
+                f"<span class='message-text'>{message}</span>"
                 "</div>"
             )
 
