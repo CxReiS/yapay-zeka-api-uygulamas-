@@ -31,43 +31,17 @@ from utils import validate_email, format_file_size, create_safe_filename
 
 # Log dosyasını yönet
 MAX_LOG_LINES = 1000
-LOG_META_FILE = "log_meta.json"
 
 def manage_log_file(max_lines: int = MAX_LOG_LINES):
-    """app.log dosyasını sınırlar ve kapatma sayısına göre temizler"""
+    """app.log dosyasını her başlangıçta temizler ve çok büyürse sıfırlar"""
     try:
-        count = 0
-        if os.path.exists(LOG_META_FILE):
-            with open(LOG_META_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                count = data.get("close_count", 0)
-
-        if count >= 2:
-            if os.path.exists("app.log"):
-                os.remove("app.log")
-            count = 0
-        elif os.path.exists("app.log"):
+        if os.path.exists("app.log"):
             with open("app.log", "r", encoding="utf-8") as f:
                 line_count = sum(1 for _ in f)
             if line_count >= max_lines:
                 os.remove("app.log")
-                count = 0
-
-        with open(LOG_META_FILE, "w", encoding="utf-8") as f:
-            json.dump({"close_count": count}, f)
-    except Exception:
-        pass
-
-def increment_log_counter():
-    try:
-        count = 0
-        if os.path.exists(LOG_META_FILE):
-            with open(LOG_META_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                count = data.get("close_count", 0)
-        count += 1
-        with open(LOG_META_FILE, "w", encoding="utf-8") as f:
-            json.dump({"close_count": count}, f)
+            else:
+                open("app.log", "w", encoding="utf-8").close()
     except Exception:
         pass
 
@@ -203,7 +177,7 @@ class MainApplication(QMainWindow):
                         item = QListWidgetItem(chat["title"])
                         item.setData(Qt.ItemDataRole.UserRole, chat["id"])
                         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-                        item.setSizeHint(QSize(25, 4))
+                        item.setSizeHint(QSize(self.chat_list.width() - 20, 36))
                         self.chat_list.addItem(item)
 
                         if "chat_data" in app_state and chat["id"] in app_state["chat_data"]:
@@ -408,6 +382,8 @@ class MainApplication(QMainWindow):
         self.chat_list.setAcceptDrops(True)
         self.chat_list.setDragDropMode(QListWidget.DragDropMode.InternalMove)
         self.chat_list.model().rowsMoved.connect(self.chat_order_changed)
+        self.chat_list.dragEnterEvent = self.chat_list_drag_enter
+        self.chat_list.dropEvent = self.chat_list_drop_event
         sidebar_layout.addWidget(self.chat_list, 1)
         
         # Yeni Proje Butonu - Büyük ikon (48x48)
@@ -436,13 +412,14 @@ class MainApplication(QMainWindow):
         sidebar_layout.addWidget(self.projects_tree, 1)
         
         # Model Seçimi
-        model_box = QGroupBox("🤖 Model")
-        model_layout = QVBoxLayout(model_box)
+        self.model_box = QGroupBox()
+        model_layout = QVBoxLayout(self.model_box)
         self.model_combo = QComboBox()
         self.model_combo.addItems(["deepseek-chat", "deepseek-coder", "deepseek-math"])
         self.model_combo.currentIndexChanged.connect(self.model_changed)
         model_layout.addWidget(self.model_combo)
-        sidebar_layout.addWidget(model_box)
+        self.model_box.setTitle(f"🤖 {self.model_combo.currentText()}")
+        sidebar_layout.addWidget(self.model_box)
         sidebar_layout.addStretch()
     
     def setup_right_panel(self):
@@ -731,10 +708,14 @@ class MainApplication(QMainWindow):
 
             # Model Seçimi
             model_layout = QHBoxLayout()
-            model_layout.addWidget(QLabel("🤖 Aktif Model:"))
+            self.model_label_dialog = QLabel(f"🤖 {self.model_combo.currentText()}")
+            model_layout.addWidget(self.model_label_dialog)
             self.model_combo_dialog = QComboBox()
             self.model_combo_dialog.addItems(["deepseek-chat", "deepseek-coder", "deepseek-math"])
             self.model_combo_dialog.setCurrentText(self.model_combo.currentText())
+            self.model_combo_dialog.currentIndexChanged.connect(
+                lambda: self.model_label_dialog.setText(f"🤖 {self.model_combo_dialog.currentText()}")
+            )
             model_layout.addWidget(self.model_combo_dialog, 1)
             layout.addLayout(model_layout)
 
@@ -781,7 +762,19 @@ class MainApplication(QMainWindow):
             dialog.setLayout(layout)
             dialog.exec()
         except Exception as e:
-            logger.error(f"Model yönetimi açılırken hata: {str(e)}") 
+            logger.error(f"Model yönetimi açılırken hata: {str(e)}")
+
+    def save_model_settings(self):
+        """Model ve API ayarlarını kaydet"""
+        try:
+            self.save_api_key(self.api_key_edit.text())
+            model_name = self.model_combo_dialog.currentText()
+            self.model_combo.setCurrentText(model_name)
+            self.model_box.setTitle(f"🤖 {model_name}")
+            self.model_dialog.accept()
+            self.save_app_state()
+        except Exception as e:
+            logger.error(f"Model ayarları kaydedilirken hata: {str(e)}")
 
     def setup_shortcuts(self):
         
@@ -982,14 +975,17 @@ class MainApplication(QMainWindow):
                     "title": item.text(),
                     "messages": []
                 }
-            
+
             # Mesajları yükle
             self.chat_display.clear()
             for msg in self.chat_data[chat_id]["messages"]:
                 self.append_message(msg["sender"], msg["message"])
             self.active_chat_id = chat_id
             self.statusBar().showMessage(f"💬 {item.text()} yüklendi", 3000)
-            
+
+            # Proje bağlamını gizle
+            self.context_tabs.setTabVisible(self.project_tab_index, False)
+
             # Sidebar'da seçili hale getir
             self.chat_list.setCurrentItem(item)
             
@@ -1126,6 +1122,7 @@ class MainApplication(QMainWindow):
             item = QListWidgetItem(chat_name)
             item.setData(Qt.ItemDataRole.UserRole, chat_id)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+            item.setSizeHint(QSize(self.chat_list.width() - 20, 36))
             self.chat_list.addItem(item)
             
             # Yeni sohbet verisini oluştur
@@ -1508,6 +1505,14 @@ class MainApplication(QMainWindow):
             export_action = menu.addAction(QIcon("icons/export.png"), "Sohbeti Dışa Aktar")
             export_action.triggered.connect(self.export_selected_chat)
 
+            move_menu = menu.addMenu(QIcon("icons/move.png"), "Projeye Taşı")
+            for i in range(self.projects_tree.topLevelItemCount()):
+                project = self.projects_tree.topLevelItem(i)
+                move_action = move_menu.addAction(project.text(0))
+                move_action.triggered.connect(
+                    lambda _, p=project: self.move_chat_to_project(p, self.chat_list.currentItem())
+                )
+
             menu.exec(self.chat_display.mapToGlobal(pos))
         except Exception as e:
             logger.error(f"Bağlam menüsü gösterilirken hata: {str(e)}")
@@ -1531,21 +1536,36 @@ class MainApplication(QMainWindow):
         item = self.projects_tree.itemAt(event.position().toPoint())
         source = event.source()
         if source == self.projects_tree:
-            chat_item = self.projects_tree.currentItem()
+            if item:
+                QTreeWidget.dropEvent(self.projects_tree, event)
+                self.save_app_state()
+            else:
+                chat_item = self.projects_tree.currentItem()
+                if chat_item and chat_item.parent():
+                    self.move_to_main_chat_list(chat_item)
+                    event.acceptProposedAction()
         else:
             chat_item = self.chat_list.currentItem()
-
-        if chat_item:
-            if item and not item.parent():
+            if item and not item.parent() and chat_item:
                 self.move_chat_to_project(item, chat_item)
-                event.acceptProposedAction()
-            elif not item:
-                self.move_to_main_chat_list(chat_item)
                 event.acceptProposedAction()
             else:
                 event.ignore()
-        else:
-            event.ignore()
+
+    def chat_list_drag_enter(self, event):
+        if event.mimeData().hasFormat('application/x-qabstractitemmodeldatalist'):
+            event.acceptProposedAction()
+
+    def chat_list_drop_event(self, event):
+        source = event.source()
+        if source == self.projects_tree:
+            chat_item = self.projects_tree.currentItem()
+            if chat_item and chat_item.parent():
+                self.move_to_main_chat_list(chat_item)
+                event.acceptProposedAction()
+                return
+        QListWidget.dropEvent(self.chat_list, event)
+        self.save_app_state()
     
     def rename_selected_chat(self):
         """Seçili sohbeti yeniden adlandır"""
@@ -1729,7 +1749,6 @@ class MainApplication(QMainWindow):
         """Pencere kapatılırken durumu kaydet"""
         try:
             self.save_app_state()
-            increment_log_counter()
         finally:
             event.accept()
     
@@ -1858,30 +1877,18 @@ class MainApplication(QMainWindow):
             # Aktif modeli al
             model_name = self.model_combo.currentText()
             
-            # API iş parçacığı
-            self.worker = WorkerThread(
-                "demo-key",
-                [{"role": msg['sender'], "content": msg['message']} for msg in self.chat_data[self.active_chat_id]["messages"]],
-                model_name
-            )
-            self.worker.thinking_updated.connect(self.handle_thinking_update)
-            self.worker.response_received.connect(lambda reply, t: self.handle_api_response(reply, model_name))
-            self.worker.error_occurred.connect(lambda err: self.handle_api_error(err, model_name))
-            self.worker.start()
-            self.statusBar().showMessage("⏳ DeepSeek yanıt oluşturuyor...")
-            self.send_btn.setText(" Durdur")
-            self.send_btn.setIcon(QIcon("icons/update.png"))
-            self.message_input.setReadOnly(True)
-            self.sending = True
+            history = [{"role": msg['sender'], "content": msg['message']} for msg in self.chat_data[self.active_chat_id]["messages"]]
             if self.api_key:
-                history = []
-                for msg in self.chat_data[self.active_chat_id]["messages"]:
-                    role = "user" if msg["sender"] == "user" else "assistant"
-                    history.append({"role": role, "content": msg["message"]})
                 self.worker = WorkerThread(self.api_key, history, self.model_mapping.get(model_name, "deepseek/deepseek-r1:free"))
                 self.worker.response_received.connect(lambda reply, _: self.handle_api_response(reply, model_name))
                 self.worker.error_occurred.connect(lambda err: self.handle_api_error(err, model_name))
+                self.worker.thinking_updated.connect(self.handle_thinking_update)
                 self.worker.start()
+                self.statusBar().showMessage("⏳ DeepSeek yanıt oluşturuyor...")
+                self.send_btn.setText(" Durdur")
+                self.send_btn.setIcon(QIcon("icons/update.png"))
+                self.message_input.setReadOnly(True)
+                self.sending = True
             else:
                 QTimer.singleShot(1500, lambda: self.simulate_response(model_name))
             
@@ -1896,6 +1903,7 @@ class MainApplication(QMainWindow):
             
     def model_changed(self, index):
         model_name = self.model_combo.currentText()
+        self.model_box.setTitle(f"🤖 {model_name}")
         self.statusBar().showMessage(f"🤖 Aktif model: {model_name}", 5000)
         if "coder" in model_name:
             self.message_input.setPlaceholderText("Kod problemini yazın...")
@@ -1911,7 +1919,7 @@ class MainApplication(QMainWindow):
             cursor.movePosition(QTextCursor.MoveOperation.End)
 
             if sender == "user":
-                prefix = "Siz: "
+                prefix = "Siz:"
                 msg_class = "user-message"
                 spacer = ""
             else:
