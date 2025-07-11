@@ -117,6 +117,7 @@ class MainApplication(QMainWindow):
         
         # Uygulama durumunu yükle
         self.load_app_state()
+        self.update_model_combo()
         self.apply_font_settings()
         
         # Tema
@@ -127,7 +128,12 @@ class MainApplication(QMainWindow):
         self.api_key = None
         self.api_base_url = "https://openrouter.ai/api/v1"
         self.load_api_key()
-        
+
+    def update_model_combo(self):
+        """Update model label according to combo box"""
+        if hasattr(self, "model_label"):
+            self.model_label.setText(f"Model: {self.model_combo.currentText()}")
+
     # BU METODU EKLEYİN (init'den sonra herhangi bir yere)
     def apply_font_settings(self):
         """Font ayarlarını uygular"""
@@ -1570,6 +1576,7 @@ class MainApplication(QMainWindow):
                 self.save_api_key(key)
             selected = self.model_combo_dialog.currentText()
             self.model_combo.setCurrentText(selected)
+            self.update_model_combo()
             if hasattr(self, "model_dialog"):
                 self.model_dialog.accept()
             self.statusBar().showMessage("✅ Model ayarları kaydedildi", 3000)
@@ -1696,8 +1703,7 @@ class MainApplication(QMainWindow):
     def model_changed(self, index):
         model_name = self.model_combo.currentText()
         self.statusBar().showMessage(f"🤖 Aktif model: {model_name}", 5000)
-        if hasattr(self, "model_label"):
-            self.model_label.setText(f"Model: {model_name}")
+        self.update_model_combo()
         if "coder" in model_name:
             self.message_input.setPlaceholderText("Kod problemini yazın...")
         elif "math" in model_name:
