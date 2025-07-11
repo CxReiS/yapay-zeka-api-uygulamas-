@@ -13,7 +13,8 @@ from PyQt6.QtWidgets import (
     QMenu, QSystemTrayIcon, QInputDialog, QDialog, QDialogButtonBox,
     QFormLayout, QTabWidget, QFileDialog, QListWidgetItem, QGroupBox,
     QScrollArea, QKeySequenceEdit, QToolButton, QSizePolicy, QGridLayout,
-    QFontComboBox, QSlider, QMessageBox, QCheckBox, QListView, QAbstractScrollArea
+    QFontComboBox, QSlider, QMessageBox, QCheckBox, QListView, QAbstractScrollArea,
+    QAbstractItemView
 )
 from PyQt6.QtCore import Qt, QTimer, QSize, QDateTime, QEvent
 from PyQt6.QtGui import (
@@ -158,8 +159,8 @@ class MainApplication(QMainWindow):
                         item = QListWidgetItem(chat["title"])
                         item.setData(Qt.ItemDataRole.UserRole, chat["id"])
                         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-                        item.setSizeHint(QSize(25, 4))
                         self.chat_list.addItem(item)
+                        self.update_chat_title(chat["id"], chat["title"])
 
                         if "chat_data" in app_state and chat["id"] in app_state["chat_data"]:
                             self.chat_data[chat["id"]] = app_state["chat_data"][chat["id"]]
@@ -302,6 +303,8 @@ class MainApplication(QMainWindow):
         """Status bar'ı kur"""
         status_bar = self.statusBar()
         status_bar.showMessage("✅ Bağlantı kuruldu")
+        self.model_label = QLabel(f"Model: {self.model_combo.currentText()}")
+        status_bar.addPermanentWidget(self.model_label)
                   
     def setup_tray_icon(self):
         pixmap = QPixmap("icons/logo.png").scaled(
@@ -380,8 +383,10 @@ class MainApplication(QMainWindow):
         self.projects_tree.customContextMenuRequested.connect(self.show_project_context_menu)
         self.projects_tree.itemClicked.connect(self.load_project_chat)
         self.projects_tree.itemDoubleClicked.connect(self.edit_project_title)
+        self.projects_tree.setDragEnabled(True)
         self.projects_tree.setAcceptDrops(True)
         self.projects_tree.viewport().setAcceptDrops(True)
+        self.projects_tree.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.projects_tree.dragEnterEvent = self.project_drag_enter
         self.projects_tree.dropEvent = self.project_drop_event
         self.projects_tree.currentItemChanged.connect(self.load_project_context)
@@ -419,8 +424,8 @@ class MainApplication(QMainWindow):
         self.context_tabs.addTab(chat_tab, "💬 Sohbet")
         
         # Proje Bağlamı Sekmesi
-        project_tab = QWidget()
-        project_layout = QVBoxLayout(project_tab)
+        self.project_context_tab = QWidget()
+        project_layout = QVBoxLayout(self.project_context_tab)
         self.project_instructions = QTextEdit()
         self.project_instructions.setPlaceholderText("Proje talimatları...")
         project_layout.addWidget(QLabel("📝 Talimatlar:"))
@@ -436,7 +441,7 @@ class MainApplication(QMainWindow):
         file_btn_layout.addWidget(self.add_project_file_btn)
         file_btn_layout.addWidget(self.remove_project_file_btn)
         project_layout.addLayout(file_btn_layout)
-        self.context_tabs.addTab(project_tab, "📂 Proje Bağlamı")
+        self.context_tabs.addTab(self.project_context_tab, "📂 Proje Bağlamı")
                 
         # Mesaj Gönderme Paneli
         send_panel = QWidget()
@@ -1027,7 +1032,8 @@ class MainApplication(QMainWindow):
             # Aktif modeli göster
             model_name = self.model_combo.currentText()
             self.statusBar().showMessage(f"🤖 Aktif Model: {model_name}", 5000)
-        
+            self.hide_project_panels()
+
         except Exception as e:
             logger.error(f"Sohbet yüklenirken hata: {str(e)}")
     
@@ -1066,7 +1072,8 @@ class MainApplication(QMainWindow):
                 # Aktif modeli göster
                 model_name = self.model_combo.currentText()
                 self.statusBar().showMessage(f"🤖 Aktif Model: {model_name}", 5000)
-        
+                self.show_project_panels()
+
         except Exception as e:
             logger.error(f"Proje sohbeti yüklenirken hata: {str(e)}")
             
@@ -1156,7 +1163,7 @@ class MainApplication(QMainWindow):
             
             # Yeni sohbet öğesi oluştur
             chat_count = self.chat_list.count() + 1
-            chat_name = f"Yeni Sohbet {chat_count}"
+            chat_name = self.ensure_unique_chat_title(f"Yeni Sohbet {chat_count}")
             chat_id = str(uuid.uuid4())
             item = QListWidgetItem(chat_name)
             item.setData(Qt.ItemDataRole.UserRole, chat_id)
@@ -1263,8 +1270,35 @@ class MainApplication(QMainWindow):
         """Başlık değiştiğinde güncellemeleri yap"""
         chat_id = item.data(Qt.ItemDataRole.UserRole)
         if chat_id in self.chat_data:
-            new_title = item.text()
-            self.update_chat_title(chat_id, new_title)            
+            new_title = self.ensure_unique_chat_title(item.text(), chat_id)
+            self.update_chat_title(chat_id, new_title)
+
+    def ensure_unique_chat_title(self, title, exclude_id=None):
+        """Aynı isimde sohbet oluşmasını engeller"""
+        existing = [data["title"] for cid, data in self.chat_data.items() if cid != exclude_id]
+        if title not in existing:
+            return title
+        base = title
+        suffix = 1
+        new_title = f"{base} {suffix}"
+        while new_title in existing:
+            suffix += 1
+            new_title = f"{base} {suffix}"
+        return new_title
+
+    def show_project_panels(self):
+        if self.context_tabs.indexOf(self.project_view) == -1:
+            self.context_tabs.insertTab(0, self.project_view, "📂 Proje")
+        if self.context_tabs.indexOf(self.project_context_tab) == -1:
+            self.context_tabs.addTab(self.project_context_tab, "📂 Proje Bağlamı")
+
+    def hide_project_panels(self):
+        idx = self.context_tabs.indexOf(self.project_view)
+        if idx != -1:
+            self.context_tabs.removeTab(idx)
+        idx = self.context_tabs.indexOf(self.project_context_tab)
+        if idx != -1:
+            self.context_tabs.removeTab(idx)
             
     def _expand_editor_widget(self):
         """Edit kutusunu genişletir"""
@@ -1543,7 +1577,7 @@ class MainApplication(QMainWindow):
         """Projeye yeni sohbet ekle"""
         try:
             chat_count = project_item.childCount() + 1
-            chat_name = f"Yeni Sohbet {chat_count}"
+            chat_name = self.ensure_unique_chat_title(f"Yeni Sohbet {chat_count}")
             chat_id = str(uuid.uuid4())
             new_chat = QTreeWidgetItem([f"💬 {chat_name}"])
             new_chat.setData(0, Qt.ItemDataRole.UserRole, chat_id)
@@ -1650,80 +1684,40 @@ class MainApplication(QMainWindow):
         QApplication.quit()
     
     def load_api_key(self):
-        """Kayıtlı API anahtarını ve model ID'sini yükle"""
+        """Kayıtlı API anahtarını yükle"""
         try:
             if os.path.exists("api_config.json"):
                 with open("api_config.json", "r") as f:
                     config = json.load(f)
                     self.api_key = config.get("api_key")
-                    self.model_id = config.get("model_id")
-                    self.remote_enabled = False
-
+        
         except Exception as e:
             logger.error(f"API anahtarı yüklenirken hata: {str(e)}")
-
-    def save_api_key(self, api_key, model_id=None, remote_enabled=False):
-        """API anahtarını, model ID'sini ve uzak kullanım durumunu kaydet"""
+    
+    def save_api_key(self, api_key):
+        """API anahtarını kaydet"""
         try:
             with open("api_config.json", "w") as f:
-                json.dump({"api_key": api_key, "model_id": model_id, "remote_enabled": False}, f)
+                json.dump({"api_key": api_key}, f)
             self.api_key = api_key
-            self.model_id = model_id
-            self.remote_enabled = False
             self.statusBar().showMessage("🔑 API anahtarı kaydedildi", 3000)
 
         except Exception as e:
             logger.error(f"API anahtarı kaydedilirken hata: {str(e)}")
 
-    def load_custom_models(self):
-        """Kullanıcı tarafından eklenen modelleri yükle"""
+    def save_model_settings(self):
+        """Model yönetimi diyalogundan gelen ayarları kaydet"""
         try:
-            if os.path.exists("custom_models.json"):
-                with open("custom_models.json", "r") as f:
-                    self.custom_models = json.load(f)
-            self.update_model_combo()
+            key = self.api_key_edit.text().strip()
+            if key:
+                self.save_api_key(key)
+            selected = self.model_combo_dialog.currentText()
+            self.model_combo.setCurrentText(selected)
+            if hasattr(self, "model_dialog"):
+                self.model_dialog.accept()
+            self.statusBar().showMessage("✅ Model ayarları kaydedildi", 3000)
         except Exception as e:
-            logger.error(f"Özel modeller yüklenirken hata: {str(e)}")
-            self.custom_models = []
-
-    def save_custom_models(self):
-        """Eklenen modelleri diske kaydet"""
-        try:
-            with open("custom_models.json", "w") as f:
-                json.dump(self.custom_models, f, indent=2)
-        except Exception as e:
-            logger.error(f"Özel modeller kaydedilirken hata: {str(e)}")
-
-    def update_model_combo(self):
-        """Ana model seçim kutusunu güncelle"""
-        self.model_combo.clear()
-        self.model_mapping = self.local_model_mapping.copy()
-        for name in self.model_mapping:
-            self.model_combo.addItem(name)
-        for mid in self.custom_models:
-            if self.model_combo.findText(mid) == -1:
-                self.model_combo.addItem(mid)
-        self.model_combo.setCurrentIndex(0)
-
-    def populate_model_list(self, models=None):
-        """Model açılır kutusunu verilen listeyle doldurur"""
-        self.model_combo_dialog.clear()
-        items = []
-        if models is None:
-            items.extend(self.local_model_mapping.values())
-            for mid in self.custom_models:
-                if mid not in items:
-                    items.append(mid)
-        else:
-            items = models
-
-        for mid in items:
-            self.model_combo_dialog.addItem(mid)
-
-        if self.model_id:
-            idx = self.model_combo_dialog.findText(self.model_id)
-            if idx >= 0:
-                self.model_combo_dialog.setCurrentIndex(idx)
+            logger.error(f"Model ayarları kaydedilirken hata: {str(e)}")
     
     def get_response_from_openrouter(self, model_name):
         """OpenRouter API'sinden yanıt al"""
@@ -1817,19 +1811,31 @@ class MainApplication(QMainWindow):
             # Aktif modeli al
             model_name = self.model_combo.currentText()
             
-            history = []
-            for msg in self.chat_data[self.active_chat_id]["messages"]:
-                role = "user" if msg["sender"] == "user" else "assistant"
-                history.append({"role": role, "content": msg["message"]})
+            # Aktif modeli al
+            model_name = self.model_combo.currentText()
+            
+            history = [{"role": ("user" if m["sender"] == "user" else "assistant"), "content": m["message"]}
+                       for m in self.chat_data[self.active_chat_id]["messages"]]
 
-            target_model = self.local_model_mapping.get(model_name, model_name)
-            endpoint = "http://localhost:11434/api/generate"
-            self.worker = WorkerThread(history, target_model, endpoint)
-            self.statusBar().showMessage("⏳ Ollama yanıt oluşturuyor...")
+            if self.api_key:
+                self.worker = WorkerThread(
+                    self.api_key,
+                    history,
+                    self.model_mapping.get(model_name, "deepseek/deepseek-r1:free")
+                )
+            else:
+                self.worker = WorkerThread(
+                    "demo-key",
+                    history,
+                    model_name
+                )
             self.worker.thinking_updated.connect(self.handle_thinking_update)
-            self.worker.response_received.connect(lambda reply, _: self.handle_api_response(reply, model_name))
-            self.worker.error_occurred.connect(lambda err: self.handle_api_error(err, model_name))
+            self.worker.response_received.connect(lambda reply, t: self.handle_api_response(reply, model_name))
+            self.worker.error_occurred.connect(lambda err: self.statusBar().showMessage(err, 5000))
             self.worker.start()
+            self.statusBar().showMessage("⏳ DeepSeek yanıt oluşturuyor...")
+            if not self.api_key:
+                QTimer.singleShot(1500, lambda: self.simulate_response(model_name))
             
             # Ekli dosyaları temizle
             self.attached_files = []
@@ -1843,6 +1849,8 @@ class MainApplication(QMainWindow):
     def model_changed(self, index):
         model_name = self.model_combo.currentText()
         self.statusBar().showMessage(f"🤖 Aktif model: {model_name}", 5000)
+        if hasattr(self, "model_label"):
+            self.model_label.setText(f"Model: {model_name}")
         if "coder" in model_name:
             self.message_input.setPlaceholderText("Kod problemini yazın...")
         elif "math" in model_name:
@@ -1853,6 +1861,9 @@ class MainApplication(QMainWindow):
     def append_message(self, sender, message):
         """Sohbet ekranına mesaj ekler"""
         try:
+            cursor = self.chat_display.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+
             if sender == "user":
                 prefix = "Siz:"
                 msg_class = "user-message"
@@ -1862,12 +1873,12 @@ class MainApplication(QMainWindow):
 
             html_content = (
                 f"<div class='chat-message {msg_class}'>"
-                f"<span class='sender'>{prefix}</span><br>"
+                f"<span class='sender'>{prefix}</span>"
                 f"<div class='message-text'>{message}</div>"
                 "</div>"
-            )
+            ) + "<br/>"
 
-            self.chat_display.append(html_content)
+            self.chat_display.insertHtml(html_content)
             self.chat_display.ensureCursorVisible()
         except Exception as e:
             logger.error(f"Mesaj eklenirken hata: {str(e)}")
