@@ -1,0 +1,30 @@
+2025-07-11 18:56:58,180 - DeepSeekChat.user_manager - INFO - Kullanýcý yöneticisi baþlatýldý
+2025-07-11 18:56:58,232 - DeepSeekChat - ERROR - Uygulama baþlatýlýrken hata: 'MainApplication' object has no attribute 'update_model_combo'
+2025-07-11 19:48:57,075 - DeepSeekChat.user_manager - INFO - Kullanýcý yöneticisi baþlatýldý
+2025-07-11 19:48:57,832 - DeepSeekChat - ERROR - Unhandled exception
+Traceback (most recent call last):
+  File "C:\Users\CxReiS\Downloads\yapay-zeka-api-uygulamas-\main.py", line 2027, in model_changed
+    self.model_box.setTitle(f"\U0001f916 {model_name}")
+    ^^^^^^^^^^^^^^
+AttributeError: 'MainApplication' object has no attribute 'model_box'. Did you mean: 'model_id'?
+2025-07-11 19:48:59,805 - DeepSeekChat - ERROR - Unhandled exception
+Traceback (most recent call last):
+  File "C:\Users\CxReiS\Downloads\yapay-zeka-api-uygulamas-\main.py", line 2027, in model_changed
+    self.model_box.setTitle(f"\U0001f916 {model_name}")
+    ^^^^^^^^^^^^^^
+AttributeError: 'MainApplication' object has no attribute 'model_box'. Did you mean: 'model_id'?
+2025-07-11 19:49:00,738 - DeepSeekChat - ERROR - Unhandled exception
+Traceback (most recent call last):
+  File "C:\Users\CxReiS\Downloads\yapay-zeka-api-uygulamas-\main.py", line 2027, in model_changed
+    self.model_box.setTitle(f"\U0001f916 {model_name}")
+    ^^^^^^^^^^^^^^
+AttributeError: 'MainApplication' object has no attribute 'model_box'. Did you mean: 'model_id'?
+2025-07-11 19:49:00,942 - DeepSeekChat - ERROR - Unhandled exception
+Traceback (most recent call last):
+  File "C:\Users\CxReiS\Downloads\yapay-zeka-api-uygulamas-\main.py", line 2027, in model_changed
+    self.model_box.setTitle(f"\U0001f916 {model_name}")
+    ^^^^^^^^^^^^^^
+AttributeError: 'MainApplication' object has no attribute 'model_box'. Did you mean: 'model_id'?
+2025-07-11 19:49:02,359 - DeepSeekChat - INFO - Uygulama durumu kaydedildi
+2025-07-11 20:19:44,168 - DeepSeekChat.user_manager - INFO - Kullanýcý yöneticisi baþlatýldý
+2025-07-11 20:19:44,218 - DeepSeekChat - ERROR - Uygulama baþlatýlýrken hata: 'MainApplication' object has no attribute 'update_model_combo'

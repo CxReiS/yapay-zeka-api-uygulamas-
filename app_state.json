@@ -1,19 +1,20 @@
 {
-  "current_theme": "dark",
+  "version": "1.0.1",
+  "chats": [],
+  "projects": [],
+  "chat_data": {},
+  "model": "Ollama (local)",
+  "theme": "dark",
   "font_family": "Segoe UI",
   "font_size": 12,
-  "chat_data": {
-    "b56bdd7c-9531-4e91-a8a3-455e20507b5a": {
-      "title": "sdcasdx",
-      "messages": [
-        {
-          "sender": "user",
-          "message": "sdcasdx",
-          "timestamp": "2025-07-05T20:45:06"
-        }
-      ]
-    }
+  "label_bold": true,
+  "italic_subtitles": false,
+  "project_context": {},
+  "shortcuts": {
+    "send": "Ctrl+Return",
+    "newline": "Return",
+    "fullscreen": "F11",
+    "minimize": "Ctrl+M"
   },
-  "projects_data": [],
-  "current_project": null
+  "active_chat_id": null
 }

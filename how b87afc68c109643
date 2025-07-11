@@ -1,0 +1,860 @@
+[33mcommit 52ad42f03c57ed162c971e3b72809fb3cb2cc291[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m
+Author: CxReiS <cxteam1@gmail.com>
+Date:   Wed Jul 9 11:17:11 2025 +0300
+
+    Fix truncated files and clean helpers
+
+[1mdiff --git a/email_verifier.py b/email_verifier.py[m
+[1mindex bd2004c..2c31b29 100644[m
+[1m--- a/email_verifier.py[m
+[1m+++ b/email_verifier.py[m
+[36m@@ -1,88 +1,72 @@[m
+[31m- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' [m
+[31m-diff --git a/email_verifier.py b/email_verifier.py[m
+[31m-index fbbcfd5452e6edc8eaae6e5504370f86556d850e..7af1fb7c6c54a21dbb080a5b6c98abe7c8526b4d 100644[m
+[31m---- a/email_verifier.py[m
+[31m-+++ b/email_verifier.py[m
+[31m-@@ -1,54 +1,59 @@[m
+[31m- import logging[m
+[31m- import smtplib[m
+[31m- import ssl[m
+[31m- from email.mime.text import MIMEText[m
+[31m- import uuid[m
+[31m- [m
+[31m- logger = logging.getLogger('DeepSeekChat.email_verifier')[m
+[31m- [m
+[31m--class EmailVerifier:[m
+[31m--    def __init__(self):[m
+[31m--        self.verification_codes = {}[m
+[31m--        self.smtp_config = None[m
+[31m--        logger.info("E-posta doğrulayıcı başlatıldı")[m
+[31m-+class EmailVerifier:[m
+[31m-+    def __init__(self):[m
+[31m-+        """E-posta doğrulama işlemlerini yönetir"""[m
+[31m-+        self.verification_codes = {}[m
+[31m-+        self.smtp_config = None[m
+[31m-+        logger.info("E-posta doğrulayıcı başlatıldı")[m
+[31m-     [m
+[31m--    def set_smtp_config(self, config):[m
+[31m--        self.smtp_config = config[m
+[31m--        logger.info("SMTP konfigürasyonu güncellendi")[m
+[31m-+    def set_smtp_config(self, config):[m
+[31m-+        """SMTP ayarlarını uygular"""[m
+[31m-+        self.smtp_config = config[m
+[31m-+        logger.info("SMTP konfigürasyonu güncellendi")[m
+[31m-     [m
+[31m--    def generate_code(self):[m
+[31m--        return str(uuid.uuid4())[:6].upper()[m
+[31m-+    def generate_code(self):[m
+[31m-+        """Rastgele doğrulama kodu üretir"""[m
+[31m-+        return str(uuid.uuid4())[:6].upper()[m
+[31m-     [m
+[31m--    def send_verification_email(self, receiver_email):[m
+[31m--        if not self.smtp_config:[m
+[31m--            logger.error("SMTP konfigürasyonu yapılmamış")[m
+[31m--            return False, "SMTP ayarları yapılandırılmamış"[m
+[31m-+    def send_verification_email(self, receiver_email):[m
+[31m-+        """Kullanıcıya doğrulama e-postası gönderir"""[m
+[31m-+        if not self.smtp_config:[m
+[31m-+            logger.error("SMTP konfigürasyonu yapılmamış")[m
+[31m-+            return False, "SMTP ayarları yapılandırılmamış"[m
+[31m-         [m
+[31m-         try:[m
+[31m-             sender_email = self.smtp_config['email'][m
+[31m-             code = self.generate_code()[m
+[31m-             [m
+[31m-             message = MIMEText(f"🔐 DeepSeek Chat doğrulama kodunuz: {code}\n\nBu kodu uygulamaya girerek hesabınızı doğrulayabilirsiniz.")[m
+[31m-             message["Subject"] = "DeepSeek Chat Doğrulama Kodu"[m
+[31m-             message["From"] = sender_email[m
+[31m-             message["To"] = receiver_email[m
+[31m-             [m
+[31m-             context = ssl.create_default_context()[m
+[31m-             with smtplib.SMTP_SSL(self.smtp_config['server'], self.smtp_config['port'], context=context) as server:[m
+[31m-                 server.login(sender_email, self.smtp_config['password'])[m
+[31m-                 server.sendmail(sender_email, receiver_email, message.as_string())[m
+[31m-             [m
+[31m-             self.verification_codes[receiver_email] = code[m
+[31m-             logger.info(f"Doğrulama kodu gönderildi: {receiver_email}")[m
+[31m-             return True, "✅ Doğrulama kodu e-posta adresinize gönderildi"[m
+[31m-         except Exception as e:[m
+[31m-             logger.error(f"E-posta gönderilemedi: {str(e)}")[m
+[31m-             return False, f"❌ E-posta gönderilemedi: {str(e)}"[m
+[31m-     [m
+[31m--    def verify_code(self, email, code):[m
+[31m--        if email in self.verification_codes and self.verification_codes[email] == code:[m
+[31m--            del self.verification_codes[email][m
+[31m--            logger.info(f"E-posta doğrulandı: {email}")[m
+[31m--            return True[m
+[31m--        logger.warning(f"Geçersiz doğrulama kodu: {email}")[m
+[31m-+    def verify_code(self, email, code):[m
+[31m-+        """Girilen kodu doğrular"""[m
+[31m-+        if email in self.verification_codes and self.verification_codes[email] == code:[m
+[31m-+            del self.verification_codes[email][m
+[31m-+            logger.info(f"E-posta doğrulandı: {email}")[m
+[31m-+            return True[m
+[31m-+        logger.warning(f"Geçersiz doğrulama kodu: {email}")[m
+[31m-         return False[m
+[31m- [m
+[31m-EOF[m
+[31m-)[m
+[32m+[m[32mimport logging[m
+[32m+[m[32mimport smtplib[m
+[32m+[m[32mimport ssl[m
+[32m+[m[32mfrom email.mime.text import MIMEText[m
+[32m+[m[32mimport uuid[m
+[32m+[m
+[32m+[m[32mlogger = logging.getLogger('DeepSeekChat.email_verifier')[m
+[32m+[m
+[32m+[m[32mclass EmailVerifier:[m
+[32m+[m[32m    """Kullanıcılara e-posta ile doğrulama kodu göndermek için yardımcı sınıf."""[m
+[32m+[m
+[32m+[m[32m    def __init__(self):[m
+[32m+[m[32m        self.verification_codes = {}[m
+[32m+[m[32m        self.smtp_config = None[m
+[32m+[m[32m        logger.info("E-posta doğrulayıcı başlatıldı")[m
+[32m+[m
+[32m+[m[32m    def set_smtp_config(self, config):[m
+[32m+[m[32m        """SMTP ayarlarını uygular.[m
+[32m+[m
+[32m+[m[32m        config sözlüğü 'server', 'port', 'email' ve 'password' anahtarlarını[m
+[32m+[m[32m        içermelidir.[m
+[32m+[m[32m        """[m
+[32m+[m[32m        self.smtp_config = config[m
+[32m+[m[32m        logger.info("SMTP konfigürasyonu güncellendi")[m
+[32m+[m
+[32m+[m[32m    def generate_code(self):[m
+[32m+[m[32m        """Rastgele doğrulama kodu üretir."""[m
+[32m+[m[32m        return str(uuid.uuid4())[:6].upper()[m
+[32m+[m
+[32m+[m[32m    def send_verification_email(self, receiver_email):[m
+[32m+[m[32m        """Belirtilen adrese doğrulama e-postası gönderir."""[m
+[32m+[m[32m        if not self.smtp_config:[m
+[32m+[m[32m            logger.error("SMTP konfigürasyonu yapılmamış")[m
+[32m+[m[32m            return False, "SMTP ayarları yapılandırılmamış"[m
+[32m+[m
+[32m+[m[32m        try:[m
+[32m+[m[32m            sender_email = self.smtp_config['email'][m
+[32m+[m[32m            code = self.generate_code()[m
+[32m+[m
+[32m+[m[32m            message = MIMEText([m
+[32m+[m[32m                f"🔐 DeepSeek Chat doğrulama kodunuz: {code}\n\n"[m
+[32m+[m[32m                "Bu kodu uygulamaya girerek hesabınızı doğrulayabilirsiniz."[m
+[32m+[m[32m            )[m
+[32m+[m[32m            message['Subject'] = 'DeepSeek Chat Doğrulama Kodu'[m
+[32m+[m[32m            message['From'] = sender_email[m
+[32m+[m[32m            message['To'] = receiver_email[m
+[32m+[m
+[32m+[m[32m            context = ssl.create_default_context()[m
+[32m+[m[32m            with smtplib.SMTP_SSL([m
+[32m+[m[32m                self.smtp_config['server'],[m
+[32m+[m[32m                self.smtp_config['port'],[m
+[32m+[m[32m                context=context[m
+[32m+[m[32m            ) as server:[m
+[32m+[m[32m                server.login(sender_email, self.smtp_config['password'])[m
+[32m+[m[32m                server.sendmail(sender_email, receiver_email, message.as_string())[m
+[32m+[m
+[32m+[m[32m            self.verification_codes[receiver_email] = code[m
+[32m+[m[32m            logger.info(f"Doğrulama kodu gönderildi: {receiver_email}")[m
+[32m+[m[32m            return True, "✅ Doğrulama kodu e-posta adresinize gönderildi"[m
+[32m+[m[32m        except Exception as e:[m
+[32m+[m[32m            logger.error(f"E-posta gönderilemedi: {str(e)}")[m
+[32m+[m[32m            return False, f"❌ E-posta gönderilemedi: {str(e)}"[m
+[32m+[m
+[32m+[m[32m    def verify_code(self, email, code):[m
+[32m+[m[32m        """Girilen kodun doğruluğunu kontrol eder."""[m
+[32m+[m[32m        if email in self.verification_codes and self.verification_codes[email] == code:[m
+[32m+[m[32m            del self.verification_codes[email][m
+[32m+[m[32m            logger.info(f"E-posta doğrulandı: {email}")[m
+[32m+[m[32m            return True[m
+[32m+[m[32m        logger.warning(f"Geçersiz doğrulama kodu: {email}")[m
+[32m+[m[32m        return False[m
+[41m+[m
+[1mdiff --git a/login_window.py b/login_window.py[m
+[1mindex e030e52..e91dd69 100644[m
+[1m--- a/login_window.py[m
+[1m+++ b/login_window.py[m
+[36m@@ -1,124 +1,110 @@[m
+[31m-from PyQt6.QtWidgets import ([m
+[31m-    QMainWindow, QLabel, QLineEdit, QPushButton,[m
+[31m-    QVBoxLayout, QWidget, QMessageBox, QCheckBox[m
+[31m-)[m
+[31m-from PyQt6.QtGui import QIcon[m
+[31m-from PyQt6.QtCore import Qt, QSize[m
+[31m-import json[m
+[31m-import os[m
+[31m-import logging[m
+[31m-from main import MainApplication[m
+[31m-from user_manager import UserManager[m
+[31m-[m
+[31m-logger = logging.getLogger('DeepSeekChat.login_window')[m
+[31m-[m
+[31m-class LoginWindow(QMainWindow):[m
+[31m-    def __init__(self):[m
+[31m-        """Giriş penceresini oluşturur"""[m
+[31m-        super().__init__()[m
+[31m-        self.user_manager = user_manager[m
+[31m-        self.setWindowTitle("🔐 DeepSeek Chat - Giriş")[m
+[31m-        self.setFixedSize(450, 400)[m
+[31m-        [m
+[31m-        central_widget = QWidget()[m
+[31m-        self.setCentralWidget(central_widget)[m
+[31m-        [m
+[31m-        layout = QVBoxLayout()[m
+[31m-        central_widget.setLayout(layout)[m
+[31m-        [m
+[31m-        # Logo[m
+[31m-        self.logo_label = QLabel()[m
+[31m-        self.logo_label.setPixmap(QIcon("icons/logo.png").pixmap(128, 128))[m
+[31m-        self.logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)[m
+[31m-        layout.addWidget(self.logo_label)[m
+[31m-        [m
+[31m-        # Giriş alanları[m
+[31m-        self.username_input = QLineEdit()[m
+[31m-        self.username_input.setPlaceholderText("Email")[m
+[31m-        self.username_input.returnPressed.connect(self.attempt_login)[m
+[31m-        [m
+[31m-        self.password_input = QLineEdit()[m
+[31m-        self.password_input.setPlaceholderText("Şifre")[m
+[31m-        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)[m
+[31m-        self.password_input.returnPressed.connect(self.attempt_login)[m
+[31m-        [m
+[31m-        # "Beni Hatırla" seçeneği[m
+[31m-        self.remember_check = QCheckBox("Beni hatırla")[m
+[31m-        self.remember_check.setChecked(True)[m
+[31m-        [m
+[31m-        # Giriş butonu[m
+[31m-        self.login_button = QPushButton()[m
+[31m-        self.login_button.setIcon(QIcon("icons/login.png"))[m
+[31m-        self.login_button.setIconSize(QSize(64, 64))[m
+[31m-        self.login_button.setText(" Giriş Yap")[m
+[31m-        self.login_button.clicked.connect(self.attempt_login)[m
+[31m-        [m
+[31m-        # Otomatik giriş butonu[m
+[31m-        self.skip_login_button = QPushButton("Geçici Olarak Atla")[m
+[31m-        self.skip_login_button.clicked.connect(self.skip_login)[m
+[31m-        [m
+[31m-        # Layout[m
+[31m-        layout.addWidget(self.logo_label)[m
+[31m-        layout.addWidget(QLabel("Kullanıcı Adı:"))[m
+[31m-        layout.addWidget(self.username_input)[m
+[31m-        layout.addWidget(QLabel("Şifre:"))[m
+[31m-        layout.addWidget(self.password_input)[m
+[31m-        layout.addWidget(self.remember_check)[m
+[31m-        layout.addWidget(self.login_button)[m
+[31m-        layout.addWidget(self.skip_login_button)[m
+[31m-        [m
+[31m-    def load_user_prefs(self):[m
+[31m-        """Kayıtlı kullanıcı adını yükle"""[m
+[31m-        try:[m
+[31m-            if os.path.exists("user_prefs.json"):[m
+[31m-                with open("user_prefs.json", "r") as f:[m
+[31m-                    prefs = json.load(f)[m
+[31m-                    if prefs.get("remember"):[m
+[31m-                        self.username_input.setText(prefs.get("username", ""))[m
+[31m-                        self.remember_check.setChecked(True)[m
+[31m-        except Exception as e:[m
+[31m-            logger.error(f"Kullanıcı ayarları yüklenemedi: {str(e)}")    [m
+[31m-            [m
+[31m-    def apply_font_settings(self):[m
+[31m-        """Font ayarlarını uygular"""[m
+[31m-        try:[m
+[31m-            from utils.font_manager import apply_font_settings[m
+[31m-            apply_font_settings(self)[m
+[31m-        except Exception as e:[m
+[31m-            logger.error(f"Font ayarları uygulanırken hata: {str(e)}")   [m
+[31m-            [m
+[31m-    def attempt_login(self):[m
+[31m-        try:[m
+[31m-            email = self.username_input.text()[m
+[31m-            password = self.password_input.text()[m
+[31m-[m
+[31m-            success, message = self.user_manager.authenticate(email, password)[m
+[31m-[m
+[31m-            if success:[m
+[31m-                # Beni hatırla seçiliyse bilgileri kaydet[m
+[31m-                if self.remember_check.isChecked():[m
+[31m-                    with open("user_prefs.json", "w") as f:[m
+[31m-                        json.dump({[m
+[31m-                            "username": email,[m
+[31m-                            "remember": True[m
+[31m-                        }, f)[m
+[31m-                self.open_main_app()[m
+[31m-            else:[m
+[31m-                QMessageBox.warning(self, "Giriş Başarısız", message)[m
+[31m-[m
+[31m-        except Exception as e:[m
+[31m-            logger.error(f"Giriş hatası: {str(e)}")[m
+[31m-            QMessageBox.critical(self, "Hata", f"Giriş sırasında hata oluştu:\n{str(e)}")[m
+[31m-[m
+[31m-    def skip_login(self):[m
+[31m-        try:[m
+[31m-            self.open_main_app()[m
+[31m-        except Exception as e:[m
+[31m-            logger.error(f"Giriş atlama hatası: {str(e)}")[m
+[31m-            QMessageBox.critical(self, "Hata", f"Uygulama açılırken hata oluştu: {str(e)}")[m
+[31m-[m
+[31m-    def open_main_app(self):[m
+[31m-        self.main_app = MainApplication()[m
+[31m-        self.main_app.show()[m
+[31m-        self.close()[m
+[31m-        [m
+[32m+[m[32mfrom PyQt6.QtWidgets import ([m
+[32m+[m[32m    QMainWindow,[m
+[32m+[m[32m    QLabel,[m
+[32m+[m[32m    QLineEdit,[m
+[32m+[m[32m    QPushButton,[m
+[32m+[m[32m    QVBoxLayout,[m
+[32m+[m[32m    QWidget,[m
+[32m+[m[32m    QMessageBox,[m
+[32m+[m[32m    QCheckBox,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom PyQt6.QtGui import QIcon[m
+[32m+[m[32mfrom PyQt6.QtCore import Qt, QSize[m
+[32m+[m[32mimport json[m
+[32m+[m[32mimport os[m
+[32m+[m[32mimport logging[m
+[32m+[m[32mfrom main import MainApplication[m
+[32m+[m
+[32m+[m[32mlogger = logging.getLogger('DeepSeekChat.login_window')[m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass LoginWindow(QMainWindow):[m
+[32m+[m[32m    """Kullanıcı girişi için basit arayüz."""[m
+[32m+[m
+[32m+[m[32m    def __init__(self, user_manager):[m
+[32m+[m[32m        super().__init__()[m
+[32m+[m[32m        self.user_manager = user_manager[m
+[32m+[m[32m        self.setWindowTitle("🔐 DeepSeek Chat - Giriş")[m
+[32m+[m[32m        self.setFixedSize(450, 400)[m
+[32m+[m
+[32m+[m[32m        central_widget = QWidget()[m
+[32m+[m[32m        self.setCentralWidget(central_widget)[m
+[32m+[m
+[32m+[m[32m        layout = QVBoxLayout(central_widget)[m
+[32m+[m
+[32m+[m[32m        self.logo_label = QLabel()[m
+[32m+[m[32m        self.logo_label.setPixmap(QIcon("icons/logo.png").pixmap(128, 128))[m
+[32m+[m[32m        self.logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)[m
+[32m+[m[32m        layout.addWidget(self.logo_label)[m
+[32m+[m
+[32m+[m[32m        self.username_input = QLineEdit()[m
+[32m+[m[32m        self.username_input.setPlaceholderText("Email")[m
+[32m+[m[32m        self.username_input.returnPressed.connect(self.attempt_login)[m
+[32m+[m
+[32m+[m[32m        self.password_input = QLineEdit()[m
+[32m+[m[32m        self.password_input.setPlaceholderText("Şifre")[m
+[32m+[m[32m        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)[m
+[32m+[m[32m        self.password_input.returnPressed.connect(self.attempt_login)[m
+[32m+[m
+[32m+[m[32m        self.remember_check = QCheckBox("Beni hatırla")[m
+[32m+[m[32m        self.remember_check.setChecked(True)[m
+[32m+[m
+[32m+[m[32m        self.login_button = QPushButton()[m
+[32m+[m[32m        self.login_button.setIcon(QIcon("icons/login.png"))[m
+[32m+[m[32m        self.login_button.setIconSize(QSize(64, 64))[m
+[32m+[m[32m        self.login_button.setText(" Giriş Yap")[m
+[32m+[m[32m        self.login_button.clicked.connect(self.attempt_login)[m
+[32m+[m
+[32m+[m[32m        self.skip_login_button = QPushButton("Geçici Olarak Atla")[m
+[32m+[m[32m        self.skip_login_button.clicked.connect(self.skip_login)[m
+[32m+[m
+[32m+[m[32m        layout.addWidget(QLabel("Kullanıcı Adı:"))[m
+[32m+[m[32m        layout.addWidget(self.username_input)[m
+[32m+[m[32m        layout.addWidget(QLabel("Şifre:"))[m
+[32m+[m[32m        layout.addWidget(self.password_input)[m
+[32m+[m[32m        layout.addWidget(self.remember_check)[m
+[32m+[m[32m        layout.addWidget(self.login_button)[m
+[32m+[m[32m        layout.addWidget(self.skip_login_button)[m
+[32m+[m
+[32m+[m[32m        self.load_user_prefs()[m
+[32m+[m
+[32m+[m[32m    def load_user_prefs(self):[m
+[32m+[m[32m        """Kayıtlı kullanıcı adını yükler."""[m
+[32m+[m[32m        try:[m
+[32m+[m[32m            if os.path.exists("user_prefs.json"):[m
+[32m+[m[32m                with open("user_prefs.json", "r") as f:[m
+[32m+[m[32m                    prefs = json.load(f)[m
+[32m+[m[32m                    if prefs.get("remember"):[m
+[32m+[m[32m                        self.username_input.setText(prefs.get("username", ""))[m
+[32m+[m[32m                        self.remember_check.setChecked(True)[m
+[32m+[m[32m        except Exception as e:[m
+[32m+[m[32m            logger.error(f"Kullanıcı ayarları yüklenemedi: {str(e)}")[m
+[32m+[m
+[32m+[m[32m    def attempt_login(self):[m
+[32m+[m[32m        try:[m
+[32m+[m[32m            email = self.username_input.text()[m
+[32m+[m[32m            password = self.password_input.text()[m
+[32m+[m[32m            success, message = self.user_manager.authenticate(email, password)[m
+[32m+[m[32m            if success:[m
+[32m+[m[32m                if self.remember_check.isChecked():[m
+[32m+[m[32m                    with open("user_prefs.json", "w") as f:[m
+[32m+[m[32m                        json.dump({"username": email, "remember": True}, f)[m
+[32m+[m[32m                self.open_main_app()[m
+[32m+[m[32m            else:[m
+[32m+[m[32m                QMessageBox.warning(self, "Giriş Başarısız", message)[m
+[32m+[m[32m        except Exception as e:[m
+[32m+[m[32m            logger.error(f"Giriş hatası: {str(e)}")[m
+[32m+[m[32m            QMessageBox.critical(self, "Hata", f"Giriş sırasında hata oluştu:\n{str(e)}")[m
+[32m+[m
+[32m+[m[32m    def skip_login(self):[m
+[32m+[m[32m        try:[m
+[32m+[m[32m            self.open_main_app()[m
+[32m+[m[32m        except Exception as e:[m
+[32m+[m[32m            logger.error(f"Giriş atlama hatası: {str(e)}")[m
+[32m+[m[32m            QMessageBox.critical(self, "Hata", f"Uygulama açılırken hata oluştu: {str(e)}")[m
+[32m+[m
+[32m+[m[32m    def open_main_app(self):[m
+[32m+[m[32m        self.main_app = MainApplication()[m
+[32m+[m[32m        self.main_app.show()[m
+[32m+[m[32m        self.close()[m
+[32m+[m
+[1mdiff --git a/project_view.py b/project_view.py[m
+[1mindex b7a6656..d5e3a87 100644[m
+[1m--- a/project_view.py[m
+[1m+++ b/project_view.py[m
+[36m@@ -1,125 +1,100 @@[m
+[31m-import os[m
+[31m-from PyQt6.QtWidgets import ([m
+[31m-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, [m
+[31m-    QPushButton, QFileDialog, QGroupBox, QTextEdit[m
+[31m-)[m
+[31m-from PyQt6.QtGui import QIcon[m
+[31m-from PyQt6.QtCore import Qt, QSize[m
+[31m-from utils import format_file_size[m
+[31m-[m
+[31m-class ProjectView(QWidget):[m
+[31m-    def __init__(self, project_data, parent=None):[m
+[31m-        super().__init__(parent)[m
+[31m-        self.project_data = project_data[m
+[31m-        self.ana_uygulama = parent  # Ana uygulamaya erişim[m
+[31m-        self.init_ui() # init_ui metodunu çağır[m
+[31m-        [m
+[31m-    def init_ui(self):[m
+[31m-        """Arayüz bileşenlerini başlatır"""[m
+[31m-        layout = QVBoxLayout()[m
+[31m-        layout.setContentsMargins(10, 10, 10, 10)[m
+[31m-        layout.setSpacing(10)    [m
+[31m-    [m
+[31m-    def refresh_view(self):[m
+[31m-        """Proje verilerini görünümde günceller"""[m
+[31m-        self.name_edit.setText(self.project_data.get('name', 'Yeni Proje'))[m
+[31m-        self.instructions_edit.setPlainText(self.project_data.get('instructions', ''))[m
+[31m-        self.file_list.clear()[m
+[31m-        self.file_list.addItems(self.project_data.get('files', []))[m
+[31m-        [m
+[31m-        layout = QVBoxLayout()[m
+[31m-        layout.setContentsMargins(10, 10, 10, 10)[m
+[31m-        layout.setSpacing(10)[m
+[31m-        [m
+[31m-        # Proje başlığı[m
+[31m-        self.baslik = QLabel(f"📂 {self.project_data.get('name', 'Yeni Proje')}")[m
+[31m-        self.baslik.setObjectName("project_title")[m
+[31m-        layout.addWidget(self.baslik)[m
+[31m-        [m
+[31m-        # Yeni sohbet butonu[m
+[31m-        self.yeni_sohbet_btn = QPushButton("💬 Yeni Sohbet")[m
+[31m-        self.yeni_sohbet_btn.setIconSize(QSize(24, 24))[m
+[31m-        self.yeni_sohbet_btn.clicked.connect(self.yeni_sohbet_olustur)[m
+[31m-        layout.addWidget(self.yeni_sohbet_btn)[m
+[31m-        [m
+[31m-        # Sohbet listesi[m
+[31m-        layout.addWidget(QLabel("Proje Sohbetleri:"))[m
+[31m-        self.sohbet_listesi = QListWidget()[m
+[31m-        self.sohbet_listesi.itemDoubleClicked.connect(self.sohbet_yukle)[m
+[31m-        layout.addWidget(self.sohbet_listesi)[m
+[31m-        [m
+[31m-        # Araçlar bölümü[m
+[31m-        araclar_grubu = QGroupBox("🛠️ Araçlar")[m
+[31m-        araclar_duzeni = QVBoxLayout(araclar_grubu)[m
+[31m-        [m
+[31m-        # Dosya ekleme[m
+[31m-        self.dosya_ekle_btn = QPushButton("📎 Dosya Ekle")[m
+[31m-        self.dosya_ekle_btn.clicked.connect(self.dosya_ekle)[m
+[31m-        araclar_duzeni.addWidget(self.dosya_ekle_btn)[m
+[31m-        [m
+[31m-        # Ekli dosyalar listesi[m
+[31m-        self.dosya_listesi = QListWidget()[m
+[31m-        araclar_duzeni.addWidget(self.dosya_listesi)[m
+[31m-        [m
+[31m-        # Talimatlar[m
+[31m-        self.talimatlar = QTextEdit()[m
+[31m-        self.talimatlar.setPlaceholderText("Proje talimatları...")[m
+[31m-        araclar_duzeni.addWidget(QLabel("📝 Talimatlar:"))[m
+[31m-        araclar_duzeni.addWidget(self.talimatlar)[m
+[31m-        [m
+[31m-        layout.addWidget(araclar_grubu)[m
+[31m-        self.setLayout(layout)[m
+[31m-        [m
+[31m-        # Verileri yükle[m
+[31m-        self.refresh_view()[m
+[31m-    [m
+[31m-    def refresh_view(self):[m
+[31m-        """Proje verilerini görünüme yansıt"""[m
+[31m-        [m
+[31m-        # Başlık[m
+[31m-        self.baslik.setText(f"📂 {self.project_data.get('name', 'Yeni Proje')}")[m
+[31m-        [m
+[31m-        # Sohbetleri doldur[m
+[31m-        self.sohbet_listesi.clear()[m
+[31m-        for sohbet in self.proje.get('sohbetler', []):[m
+[31m-            oge = QListWidgetItem(f"💬 {sohbet['baslik']}")[m
+[31m-            oge.setData(Qt.ItemDataRole.UserRole, sohbet['id'])[m
+[31m-            self.sohbet_listesi.addItem(oge)[m
+[31m-        [m
+[31m-        # Dosyaları doldur[m
+[31m-        self.dosya_listesi.clear()[m
+[31m-        for dosya in self.project_data.get('files', []):[m
+[31m-            if os.path.exists(dosya):[m
+[31m-                file_size = os.path.getsize(dosya)[m
+[31m-                size_text = format_file_size(file_size)[m
+[31m-                self.dosya_listesi.addItem(f"📎 {os.path.basename(dosya)} ({size_text})")[m
+[31m-            else:[m
+[31m-                self.dosya_listesi.addItem(f"📎 {os.path.basename(dosya)} (Dosya bulunamadı)")[m
+[31m-        [m
+[31m-        # Talimatları doldur[m
+[31m-        self.talimatlar.setPlainText(self.project_data.get('instructions', ''))[m
+[31m-    [m
+[31m-    def yeni_sohbet_olustur(self):[m
+[31m-        """Ana uygulamada yeni sohbet oluştur"""[m
+[31m-        if self.ana_uygulama:[m
+[31m-            self.ana_uygulama.proje_sohbeti_olustur(self.project_data.get('id'))[m
+[31m-    [m
+[31m-    def dosya_ekle(self):[m
+[31m-        """Projeye dosya ekle"""[m
+[31m-        dosya_yolu, _ = QFileDialog.getOpenFileName(self, "Dosya Seç", "", "Tüm Dosyalar (*)")[m
+[31m-        if dosya_yolu:[m
+[31m-            if 'files' not in self.project_data:[m
+[31m-                self.project_data['files'] = [][m
+[31m-                [m
+[31m-            if dosya_yolu not in self.project_data['files']:[m
+[31m-                self.project_data['files'].append(dosya_yolu)[m
+[31m-                if self.ana_uygulama:[m
+[31m-                    self.ana_uygulama.save_app_state()[m
+[31m-                self.refresh_view()  # Görünümü yenile[m
+[31m-    [m
+[31m-    def sohbet_yukle(self, oge):[m
+[31m-        """Sohbeti yükle"""[m
+[31m-        sohbet_id = oge.data(Qt.ItemDataRole.UserRole)[m
+[31m-        if self.ana_uygulama:[m
+[31m-            self.ana_uygulama.load_chat_by_id(sohbet_id)[m
+[31m-        [m
+\ No newline at end of file[m
+[32m+[m[32mimport os[m
+[32m+[m[32mfrom PyQt6.QtWidgets import ([m
+[32m+[m[32m    QWidget,[m
+[32m+[m[32m    QVBoxLayout,[m
+[32m+[m[32m    QLabel,[m
+[32m+[m[32m    QListWidget,[m
+[32m+[m[32m    QListWidgetItem,[m
+[32m+[m[32m    QPushButton,[m
+[32m+[m[32m    QFileDialog,[m
+[32m+[m[32m    QGroupBox,[m
+[32m+[m[32m    QTextEdit,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom PyQt6.QtCore import Qt, QSize[m
+[32m+[m[32mfrom utils import format_file_size[m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass ProjectView(QWidget):[m
+[32m+[m[32m    """Projeye ait sohbetleri ve dosyaları gösteren bileşen."""[m
+[32m+[m
+[32m+[m[32m    def __init__(self, project_data, parent=None):[m
+[32m+[m[32m        super().__init__(parent)[m
+[32m+[m[32m        self.project_data = project_data or {}[m
+[32m+[m[32m        self.main_app = parent[m
+[32m+[m[32m        self._build_ui()[m
+[32m+[m[32m        self.refresh_view()[m
+[32m+[m
+[32m+[m[32m    def _build_ui(self):[m
+[32m+[m[32m        layout = QVBoxLayout(self)[m
+[32m+[m[32m        layout.setContentsMargins(10, 10, 10, 10)[m
+[32m+[m[32m        layout.setSpacing(10)[m
+[32m+[m
+[32m+[m[32m        self.title_label = QLabel()[m
+[32m+[m[32m        self.title_label.setObjectName("project_title")[m
+[32m+[m[32m        layout.addWidget(self.title_label)[m
+[32m+[m
+[32m+[m[32m        self.new_chat_btn = QPushButton("💬 Yeni Sohbet")[m
+[32m+[m[32m        self.new_chat_btn.setIconSize(QSize(24, 24))[m
+[32m+[m[32m        self.new_chat_btn.clicked.connect(self.new_chat)[m
+[32m+[m[32m        layout.addWidget(self.new_chat_btn)[m
+[32m+[m
+[32m+[m[32m        layout.addWidget(QLabel("Proje Sohbetleri:"))[m
+[32m+[m[32m        self.chat_list = QListWidget()[m
+[32m+[m[32m        self.chat_list.itemDoubleClicked.connect(self.load_chat)[m
+[32m+[m[32m        layout.addWidget(self.chat_list)[m
+[32m+[m
+[32m+[m[32m        tools_group = QGroupBox("🛠️ Araçlar")[m
+[32m+[m[32m        tools_layout = QVBoxLayout(tools_group)[m
+[32m+[m
+[32m+[m[32m        self.add_file_btn = QPushButton("📎 Dosya Ekle")[m
+[32m+[m[32m        self.add_file_btn.clicked.connect(self.add_file)[m
+[32m+[m[32m        tools_layout.addWidget(self.add_file_btn)[m
+[32m+[m
+[32m+[m[32m        self.file_list = QListWidget()[m
+[32m+[m[32m        tools_layout.addWidget(self.file_list)[m
+[32m+[m
+[32m+[m[32m        tools_layout.addWidget(QLabel("📝 Talimatlar:"))[m
+[32m+[m[32m        self.instructions_edit = QTextEdit()[m
+[32m+[m[32m        self.instructions_edit.setPlaceholderText("Proje talimatları...")[m
+[32m+[m[32m        tools_layout.addWidget(self.instructions_edit)[m
+[32m+[m
+[32m+[m[32m        layout.addWidget(tools_group)[m
+[32m+[m
+[32m+[m[32m    def refresh_view(self):[m
+[32m+[m[32m        self.title_label.setText(f"📂 {self.project_data.get('name', 'Yeni Proje')}")[m
+[32m+[m
+[32m+[m[32m        self.chat_list.clear()[m
+[32m+[m[32m        for chat in self.project_data.get('chats', []):[m
+[32m+[m[32m            item = QListWidgetItem(f"💬 {chat.get('title')}")[m
+[32m+[m[32m            item.setData(Qt.ItemDataRole.UserRole, chat.get('id'))[m
+[32m+[m[32m            self.chat_list.addItem(item)[m
+[32m+[m
+[32m+[m[32m        self.file_list.clear()[m
+[32m+[m[32m        for path in self.project_data.get('files', []):[m
+[32m+[m[32m            if os.path.exists(path):[m
+[32m+[m[32m                size = format_file_size(os.path.getsize(path))[m
+[32m+[m[32m                self.file_list.addItem(f"📎 {os.path.basename(path)} ({size})")[m
+[32m+[m[32m            else:[m
+[32m+[m[32m                self.file_list.addItem(f"📎 {os.path.basename(path)} (Dosya bulunamadı)")[m
+[32m+[m
+[32m+[m[32m        self.instructions_edit.setPlainText(self.project_data.get('instructions', ''))[m
+[32m+[m
+[32m+[m[32m    def new_chat(self):[m
+[32m+[m[32m        if self.main_app:[m
+[32m+[m[32m            self.main_app.proje_sohbeti_olustur(self.project_data.get('id'))[m
+[32m+[m
+[32m+[m[32m    def add_file(self):[m
+[32m+[m[32m        file_path, _ = QFileDialog.getOpenFileName(self, "Dosya Seç", "", "Tüm Dosyalar (*)")[m
+[32m+[m[32m        if file_path:[m
+[32m+[m[32m            self.project_data.setdefault('files', [])[m
+[32m+[m[32m            if file_path not in self.project_data['files']:[m
+[32m+[m[32m                self.project_data['files'].append(file_path)[m
+[32m+[m[32m                if self.main_app:[m
+[32m+[m[32m                    self.main_app.save_app_state()[m
+[32m+[m[32m                self.refresh_view()[m
+[32m+[m
+[32m+[m[32m    def load_chat(self, item):[m
+[32m+[m[32m        chat_id = item.data(Qt.ItemDataRole.UserRole)[m
+[32m+[m[32m        if self.main_app:[m
+[32m+[m[32m            self.main_app.load_chat_by_id(chat_id)[m
+[32m+[m
+[1mdiff --git a/utils/error_dialog.py b/utils/error_dialog.py[m
+[1mindex 7db6459..6a2a5ef 100644[m
+[1m--- a/utils/error_dialog.py[m
+[1m+++ b/utils/error_dialog.py[m
+[36m@@ -1,38 +1,45 @@[m
+[31m-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QTextEdit, QDialogButtonBox[m
+[31m-import os[m
+[31m-[m
+[31m-class ErrorDialog(QDialog):[m
+[31m-    def __init__(self, error_msg, parent=None):[m
+[31m-        super().__init__(parent)[m
+[31m-        self.setWindowTitle("⚠️ Hata Raporu")[m
+[31m-        self.setFixedSize(500, 400)[m
+[31m-        [m
+[31m-        layout = QVBoxLayout()[m
+[31m-        [m
+[31m-        # Hata mesajı[m
+[31m-        error_label = QLabel("Aşağıdaki hata oluştu:")[m
+[31m-        layout.addWidget(error_label)[m
+[31m-        [m
+[31m-        self.error_text = QTextEdit()[m
+[31m-        self.error_text.setPlainText(error_msg)[m
+[31m-        self.error_text.setReadOnly(True)[m
+[31m-        layout.addWidget(self.error_text)[m
+[31m-        [m
+[31m-        # Log dosyası butonu[m
+[31m-        log_btn = QPushButton("Log Dosyasını Aç")[m
+[31m-        log_btn.clicked.connect(self.open_log)[m
+[31m-        layout.addWidget(log_btn)[m
+[31m-        [m
+[31m-        # Kapat butonu[m
+[31m-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)[m
+[31m-        buttons.accepted.connect(self.accept)[m
+[31m-        layout.addWidget(buttons)[m
+[31m-        [m
+[31m-        self.setLayout(layout)[m
+[31m-    [m
+[31m-    def open_log(self):[m
+[31m-        try:[m
+[31m-            if os.path.exists("app.log"):[m
+[31m-                os.startfile("app.log")[m
+[31m-        except Exception as e:[m
+[31m-            QMessageBox.warning(self, "Hata", f"Log dosyası açılamadı: {str(e)}")[m
+\ No newline at end of file[m
+[32m+[m[32mfrom PyQt6.QtWidgets import ([m
+[32m+[m[32m    QDialog,[m
+[32m+[m[32m    QVBoxLayout,[m
+[32m+[m[32m    QLabel,[m
+[32m+[m[32m    QPushButton,[m
+[32m+[m[32m    QTextEdit,[m
+[32m+[m[32m    QDialogButtonBox,[m
+[32m+[m[32m    QMessageBox,[m
+[32m+[m[32m)[m
+[32m+[m[32mimport os[m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass ErrorDialog(QDialog):[m
+[32m+[m[32m    """Uygulamada oluşan hataları kullanıcıya gösteren basit diyalog."""[m
+[32m+[m
+[32m+[m[32m    def __init__(self, error_msg: str, parent=None):[m
+[32m+[m[32m        super().__init__(parent)[m
+[32m+[m[32m        self.setWindowTitle("⚠️ Hata Raporu")[m
+[32m+[m[32m        self.setFixedSize(500, 400)[m
+[32m+[m
+[32m+[m[32m        layout = QVBoxLayout(self)[m
+[32m+[m
+[32m+[m[32m        error_label = QLabel("Aşağıdaki hata oluştu:")[m
+[32m+[m[32m        layout.addWidget(error_label)[m
+[32m+[m
+[32m+[m[32m        self.error_text = QTextEdit()[m
+[32m+[m[32m        self.error_text.setPlainText(error_msg)[m
+[32m+[m[32m        self.error_text.setReadOnly(True)[m
+[32m+[m[32m        layout.addWidget(self.error_text)[m
+[32m+[m
+[32m+[m[32m        log_btn = QPushButton("Log Dosyasını Aç")[m
+[32m+[m[32m        log_btn.clicked.connect(self.open_log)[m
+[32m+[m[32m        layout.addWidget(log_btn)[m
+[32m+[m
+[32m+[m[32m        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)[m
+[32m+[m[32m        buttons.accepted.connect(self.accept)[m
+[32m+[m[32m        layout.addWidget(buttons)[m
+[32m+[m
+[32m+[m[32m    def open_log(self):[m
+[32m+[m[32m        try:[m
+[32m+[m[32m            if os.path.exists("app.log"):[m
+[32m+[m[32m                os.startfile("app.log")[m
+[32m+[m[32m        except Exception as e:[m
+[32m+[m[32m            QMessageBox.warning(self, "Hata", f"Log dosyası açılamadı: {str(e)}")[m
+[41m+[m
+[1mdiff --git a/utils/font_manager.py b/utils/font_manager.py[m
+[1mindex 97cb1dd..5a3b574 100644[m
+[1m--- a/utils/font_manager.py[m
+[1m+++ b/utils/font_manager.py[m
+[36m@@ -1,18 +1,21 @@[m
+[31m-from PyQt6.QtGui import QFont[m
+[31m-from PyQt6.QtWidgets import QApplication[m
+[31m-[m
+[31m-def apply_font_settings(app_instance):[m
+[31m-    try:[m
+[31m-        # Font ayarlarını uygula[m
+[31m-        font = QFont(app_instance.font_family, app_instance.font_size)[m
+[31m-        QApplication.instance().setFont(font)[m
+[31m-        [m
+[31m-        # Özel widget'lar için font ayarı[m
+[31m-        if hasattr(app_instance, 'chat_display'):[m
+[31m-            app_instance.chat_display.setFont(font)[m
+[31m-        if hasattr(app_instance, 'message_input'):[m
+[31m-            app_instance.message_input.setFont(font)[m
+[31m-            [m
+[31m-    except Exception as e:[m
+[31m-        if hasattr(app_instance, 'logger'):[m
+[31m-            app_instance.logger.error(f"Yazı tipi uygulanırken hata: {str(e)}")[m
+\ No newline at end of file[m
+[32m+[m[32mfrom PyQt6.QtGui import QFont[m
+[32m+[m[32mfrom PyQt6.QtWidgets import QApplication[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef apply_font_settings(app_instance):[m
+[32m+[m[32m    """Uygulamanın tanımlı font ayarlarını uygular."""[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        font = QFont(app_instance.font_family, app_instance.font_size)[m
+[32m+[m[32m        QApplication.instance().setFont(font)[m
+[32m+[m
+[32m+[m[32m        if hasattr(app_instance, 'chat_display'):[m
+[32m+[m[32m            app_instance.chat_display.setFont(font)[m
+[32m+[m[32m        if hasattr(app_instance, 'message_input'):[m
+[32m+[m[32m            app_instance.message_input.setFont(font)[m
+[32m+[m
+[32m+[m[32m        return font[m
+[32m+[m[32m    except Exception as e:[m
+[32m+[m[32m        if hasattr(app_instance, 'logger'):[m
+[32m+[m[32m            app_instance.logger.error(f"Yazı tipi uygulanırken hata: {str(e)}")[m
+[32m+[m[32m        return None[m
+[41m+[m
+[1mdiff --git a/utils/helpers.py b/utils/helpers.py[m
+[1mindex 57a479e..95ced02 100644[m
+[1m--- a/utils/helpers.py[m
+[1m+++ b/utils/helpers.py[m
+[36m@@ -1,37 +1,42 @@[m
+[31m-import os[m
+[31m-import re[m
+[31m-from PyQt6.QtGui import QFont[m
+[31m-from PyQt6.QtWidgets import QApplication[m
+[31m-from PyQt6.QtGui import QFontDatabase[m
+[31m-[m
+[31m-def validate_email(email):[m
+[31m-    """E-posta adresini doğrular"""[m
+[31m-    pattern = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"[m
+[31m-    return re.match(pattern, email) is not None[m
+[31m-[m
+[31m-def get_available_fonts():[m
+[31m-    """Sistemdeki mevcut fontları listeler"""[m
+[31m-    app = QApplication.instance() or QApplication([])[m
+[31m-    return QFontDatabase().families()[m
+[31m-[m
+[31m-def format_file_size(size_bytes):[m
+[31m-    """Dosya boyutunu insan okuyabileceği formata çevirir"""[m
+[31m-    for unit in ['B', 'KB', 'MB', 'GB']:[m
+[31m-        if size_bytes < 1024.0:[m
+[31m-            return f"{size_bytes:.1f} {unit}"[m
+[31m-        size_bytes /= 1024.0[m
+[31m-    return f"{size_bytes:.1f} TB"[m
+[31m-[m
+[31m-def create_safe_filename(name):[m
+[31m-    """Güvenli dosya adı oluşturur"""[m
+[31m-    return re.sub(r'[\\/*?:"<>|]', "", name).strip()[m
+[31m-[m
+[31m-def get_file_icon(file_path):[m
+[31m-    """Dosya türüne göre ikon döndürür"""[m
+[31m-    extension = os.path.splitext(file_path)[1].lower()[m
+[31m-    icons = {[m
+[31m-        '.txt': '📝', '.py': '🐍', '.js': '📜', '.html': '🌐',[m
+[31m-        '.css': '🎨', '.json': '📋', '.pdf': '📄', '.doc': '📄',[m
+[31m-        '.docx': '📄', '.md': '📘'[m
+[31m-    }[m
+[31m-    return icons.get(extension, '📄')[m
+\ No newline at end of file[m
+[32m+[m[32mimport os[m
+[32m+[m[32mimport re[m
+[32m+[m[32mfrom PyQt6.QtWidgets import QApplication[m
+[32m+[m[32mfrom PyQt6.QtGui import QFontDatabase[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef validate_email(email: str) -> bool:[m
+[32m+[m[32m    """E-posta adresinin geçerli olup olmadığını kontrol eder."""[m
+[32m+[m[32m    pattern = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"[m
+[32m+[m[32m    return re.match(pattern, email) is not None[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef get_available_fonts():[m
+[32m+[m[32m    """Sistemde bulunan yazı tiplerini döndürür."""[m
+[32m+[m[32m    app = QApplication.instance() or QApplication([])[m
+[32m+[m[32m    return QFontDatabase().families()[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef format_file_size(size_bytes: int) -> str:[m
+[32m+[m[32m    """Bayt cinsinden verilen dosya boyutunu okunabilir formata dönüştürür."""[m
+[32m+[m[32m    for unit in ['B', 'KB', 'MB', 'GB']:[m
+[32m+[m[32m        if size_bytes < 1024.0:[m
+[32m+[m[32m            return f"{size_bytes:.1f} {unit}"[m
+[32m+[m[32m        size_bytes /= 1024.0[m
+[32m+[m[32m    return f"{size_bytes:.1f} TB"[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef create_safe_filename(name: str) -> str:[m
+[32m+[m[32m    """Dosya sistemine güvenli olacak şekilde bir ad üretir."""[m
+[32m+[m[32m    return re.sub(r'[\\/*?:"<>|]', '', name).strip()[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef get_file_icon(file_path: str) -> str:[m
+[32m+[m[32m    """Dosya uzantısına göre bir emoji ikonu döndürür."""[m
+[32m+[m[32m    extension = os.path.splitext(file_path)[1].lower()[m
+[32m+[m[32m    icons = {[m
+[32m+[m[32m        '.txt': '📝', '.py': '🐍', '.js': '📜', '.html': '🌐',[m
+[32m+[m[32m        '.css': '🎨', '.json': '📋', '.pdf': '📄', '.doc': '📄',[m
+[32m+[m[32m        '.docx': '📄', '.md': '📘'[m
+[32m+[m[32m    }[m
+[32m+[m[32m    return icons.get(extension, '📄')[m
+[41m+[m
