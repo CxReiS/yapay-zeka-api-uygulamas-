@@ -14,8 +14,6 @@ import json
 import os
 import logging
 
-os.makedirs("logs", exist_ok=True)
-
 logger = logging.getLogger('DeepSeekChat.login_window')
 
 
