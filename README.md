@@ -1,3 +1,3 @@
 # yapay-zeka-api-uygulamasi
 
-Bu proje PyQt6 kullanarak gelistirilmis bir yapay zeka sohbet uygulamasidir. Arayuz stilleri `styles` klasoru altindaki CSS dosyalarinda bulunur ve uygulama bu dosyalari yukleyerek temaya uygun gorunum saglar.
+Bu proje PyQt6 ile gelistirilmis bir yapay zeka sohbet uygulamasidir. Varsayilan olarak localhost:11434 uzerinden calisan Ollama modelini kullanir. Arayuz stilleri `styles` klasoru altindaki CSS dosyalarinda bulunur.
