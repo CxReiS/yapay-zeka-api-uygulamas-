@@ -13,7 +13,8 @@ from PyQt6.QtCore import Qt, QSize
 import json
 import os
 import logging
-from main import MainApplication
+
+os.makedirs("logs", exist_ok=True)
 
 logger = logging.getLogger('DeepSeekChat.login_window')
 
@@ -104,6 +105,7 @@ class LoginWindow(QMainWindow):
             QMessageBox.critical(self, "Hata", f"Uygulama açılırken hata oluştu: {str(e)}")
 
     def open_main_app(self):
+        from main import MainApplication
         self.main_app = MainApplication()
         self.main_app.show()
         self.close()

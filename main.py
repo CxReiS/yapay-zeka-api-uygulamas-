@@ -21,7 +21,6 @@ from PyQt6.QtGui import (
     QAction, QIcon, QKeySequence, QTextCursor, QColor, QTextCharFormat, QFont, QPixmap, QFontMetrics
 )
 
-from login_window import LoginWindow
 from user_manager import UserManager
 from worker_thread import WorkerThread
 from project_view import ProjectView
@@ -30,8 +29,9 @@ from utils.font_manager import apply_font_settings
 from utils import validate_email, format_file_size, create_safe_filename
 
 # Loglama sistemini başlat
+os.makedirs("logs", exist_ok=True)
 logging.basicConfig(
-    filename='app.log',
+    filename=os.path.join("logs", "app.log"),
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
@@ -1821,9 +1821,11 @@ if __name__ == "__main__":
         
         # Pencereyi belirle
         window = None
-        
+
         user_manager = UserManager()
-        
+
+        from login_window import LoginWindow
+
          # Giriş bilgilerini kontrol et
         if os.path.exists("user_prefs.json"):
             with open("user_prefs.json", "r") as f:
