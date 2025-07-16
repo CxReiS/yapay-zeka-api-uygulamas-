@@ -2396,29 +2396,15 @@ class MainApplication(QMainWindow):
         
     def send_message(self):
         try:
-            # Gönderme devam ediyorsa iptal et
-            if hasattr(self, "worker") and self.worker.isRunning():
-                    self.worker.quit()
-                    self.worker.wait()
-
-            self.worker = WorkerThread(
-                conversation_history=history,
-                model=self.model_mapping.get(model_name, "gemma:2b"),
-                endpoint="http://localhost:11434/api/generate"
-            )
-            self.worker.terminate()
-            self.sending = False
-            if self.chat_data[self.active_chat_id]["messages"]:
-                self.chat_data[self.active_chat_id]["messages"].pop()
-            self.chat_display.clear()
-            for msg in self.chat_data[self.active_chat_id]["messages"]:
-                self.append_message(msg["sender"], msg["message"])
-            self.message_input.setPlainText(self.pending_message)
-            self.send_btn.setText(" Gönder")
-            self.send_btn.setIcon(QIcon("icons/send_message.png"))
-            self.message_input.setReadOnly(False)
-            self.statusBar().showMessage("Gönderim iptal edildi", 3000)
-            return
+            if self.sending and hasattr(self, "worker") and self.worker.isRunning():
+                self.worker.quit()
+                self.worker.wait()
+                self.sending = False
+                self.send_btn.setText(" Gönder")
+                self.send_btn.setIcon(QIcon("icons/send_message.png"))
+                self.message_input.setReadOnly(False)
+                self.statusBar().showMessage("Gönderim iptal edildi", 3000)
+                return
 
             message = self.message_input.toPlainText().strip()
             if not message and not self.attached_files:
@@ -2426,91 +2412,62 @@ class MainApplication(QMainWindow):
             if not self.active_chat_id:
                 QMessageBox.warning(self, "Uyarı", "Lütfen önce bir sohbet seçin")
                 return
-            
-
-            # Ekli dosyaları mesaja dahil et
 
             for file_path in self.attached_files:
-
                 file_name = os.path.basename(file_path)
-
                 message += f"\n\n[📎 Ek: {file_name}]"
 
-            
-
-            # Kullanıcı mesajını ekrana ve hafızaya ekle
             self.append_message("user", message)
             self.chat_data[self.active_chat_id]["messages"].append({
                 "sender": "user",
                 "message": message,
-                "timestamp": QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate)
+                "timestamp": QDateTime.currentDateTime().toString(Qt.DateFormat.ISODate),
             })
+
             if len(self.chat_data[self.active_chat_id]["messages"]) == 1:
-
                 words = message.split()[:4]
-
                 new_title = " ".join(words)
-
                 if len(new_title) > 25:
-
                     new_title = new_title[:22] + "..."
-
                 self.update_chat_title(self.active_chat_id, new_title)
 
             self.pending_message = message
             self.message_input.clear()
-            
-
-            # Aktif modeli al
 
             model_name = self.model_combo.currentText()
+            history = [{
+                "role": "user" if msg["sender"] == "user" else "assistant",
+                "content": msg["message"]
+            } for msg in self.chat_data[self.active_chat_id]["messages"]]
 
-            
+            endpoint = "http://localhost:11434/v1/chat/completions" if "gemma" in model_name else "https://openrouter.ai/api/v1/chat/completions"
+            api_key = None if "gemma" in model_name else self.api_key
 
-            # API iş parçacığı
+            if hasattr(self, "worker") and self.worker.isRunning():
+                self.worker.quit()
+                self.worker.wait()
+
             self.worker = WorkerThread(
-                "demo-key",
-                [{"role": msg['sender'], "content": msg['message']} for msg in self.chat_data[self.active_chat_id]["messages"]],
-                model_name
+                history,
+                model=self.model_mapping.get(model_name, model_name),
+                endpoint=endpoint,
+                api_key=api_key,
             )
             self.worker.thinking_updated.connect(self.handle_thinking_update)
-            self.worker.response_received.connect(lambda reply, t: self.handle_api_response(reply, model_name))
+            self.worker.response_received.connect(lambda reply, _: self.handle_api_response(reply, model_name))
             self.worker.error_occurred.connect(lambda err: self.handle_api_error(err, model_name))
             self.worker.start()
-            self.statusBar().showMessage("⏳ DeepSeek yanıt oluşturuyor...")
+
+            self.statusBar().showMessage("⏳ Yanıt bekleniyor...", 0)
             self.send_btn.setText(" Durdur")
             self.send_btn.setIcon(QIcon("icons/update.png"))
             self.message_input.setReadOnly(True)
             self.sending = True
-            if self.api_key:
-                history = []
-                for msg in self.chat_data[self.active_chat_id]["messages"]:
-                    role = "user" if msg["sender"] == "user" else "assistant"
-                    history.append({"role": role, "content": msg["message"]})
-                # Önceki worker thread varsa durdur
-                if hasattr(self, "worker") and self.worker.isRunning():
-                    self.worker.quit()
-                    self.worker.wait()
-                self.worker = WorkerThread(
-                    history,
-                    model=self.model_mapping.get(model_name, "deepseek/deepseek-r1:free"),
-                    endpoint="http://localhost:11434/api/generate" if "gemma" in model_name else "https://openrouter.ai/api/v1/chat/completions"
-                )
-                self.worker.response_received.connect(lambda reply, _: self.handle_api_response(reply, model_name))
-                self.worker.error_occurred.connect(lambda err: self.handle_api_error(err, model_name))
-                self.worker.start()
-            else:
-                QTimer.singleShot(1500, lambda: self.simulate_response(model_name))
-
-            # Ekli dosyaları temizle
             self.attached_files = []
-            
-            # Uygulama durumunu kaydet
             self.save_app_state()
 
         except Exception as e:
             logger.error(f"Mesaj gönderilirken hata: {str(e)}")
-
     def model_changed(self, index):
 
         model_name = self.model_combo.currentText()

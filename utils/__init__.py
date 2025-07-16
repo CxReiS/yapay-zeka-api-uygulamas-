@@ -7,6 +7,7 @@ from .helpers import (
     create_safe_filename,
     get_file_icon
 )
+from .api_client import send_chat_request
 
 __all__ = [
     'ErrorDialog',
@@ -15,5 +16,6 @@ __all__ = [
     'get_available_fonts',
     'format_file_size',
     'create_safe_filename',
-    'get_file_icon'
+    'get_file_icon',
+    'send_chat_request'
 ]
