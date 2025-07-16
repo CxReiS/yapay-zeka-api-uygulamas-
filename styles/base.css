@@ -51,3 +51,9 @@ QMessageBox QPushButton {
     color: #ffffff;
     border: 1px solid #1d4a7a;
 }
+
+QPushButton#attach_btn:hover,
+QPushButton#send_btn:hover {
+    background-color: #4a76cd;
+    color: white;
+}
