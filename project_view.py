@@ -33,10 +33,6 @@ class ProjectView(QWidget):
         self.title_label.setObjectName("project_title")
         layout.addWidget(self.title_label)
 
-        self.new_chat_btn = QPushButton("💬 Yeni Sohbet")
-        self.new_chat_btn.setIconSize(QSize(24, 24))
-        self.new_chat_btn.clicked.connect(self.new_chat)
-        layout.addWidget(self.new_chat_btn)
 
         layout.addWidget(QLabel("Proje Sohbetleri:"))
         self.chat_list = QListWidget()
